@@ -224,9 +224,14 @@ combatStroke.Thickness = 2
 combatStroke.Transparency = 0.2
 combatStroke.Parent = combatHint
 
+local playerInLoft = false
+
 local function refreshCombatHint()
 	local state = arena:GetAttribute("RaidState")
-	if state == "ACTIVE" then
+	if playerInLoft then
+		combatHint.Text = "SEGUI LE FRECCE  •  ENTRA NEL PORTALE RAID"
+		combatHint.TextColor3 = Color3.fromRGB(45, 235, 255)
+	elseif state == "ACTIVE" then
 		if UserInputService.TouchEnabled then
 			combatHint.Text = "SEGUI LE FRECCE  •  TOCCA ATTACCA"
 		elseif UserInputService.GamepadEnabled then
@@ -248,6 +253,15 @@ refreshCombatHint()
 
 local bossTarget = arena:WaitForChild("PrismaRex"):WaitForChild("HeroCore") :: BasePart
 local shuttleTarget = arena:WaitForChild("Architecture"):WaitForChild("AstroShuttleBay"):WaitForChild("SupplyCrate") :: BasePart
+local loft = workspace:WaitForChild("VibeLoftLobby", 12)
+local raidPortalTarget: BasePart? = nil
+if loft then
+	local loftGameplay = loft:FindFirstChild("Gameplay")
+	local candidate = if loftGameplay then loftGameplay:FindFirstChild("RaidPortal") else nil
+	if candidate and candidate:IsA("BasePart") then
+		raidPortalTarget = candidate
+	end
+end
 
 local targetGui = Instance.new("BillboardGui")
 targetGui.Name = "WorldObjective"
@@ -308,18 +322,59 @@ local function raidAttack(_actionName: string, inputState: Enum.UserInputState)
 	return Enum.ContextActionResult.Sink
 end
 
-ContextActionService:BindAction("BrainrotRaidAttack", raidAttack, true, Enum.KeyCode.ButtonR2)
+ContextActionService:BindAction("BrainrotRaidAttack", raidAttack, false, Enum.KeyCode.ButtonR2)
 ContextActionService:SetTitle("BrainrotRaidAttack", "ATTACCA")
 ContextActionService:SetPosition("BrainrotRaidAttack", UDim2.fromScale(0.82, 0.72))
+
+local touchAttackButton: TextButton? = nil
+if UserInputService.TouchEnabled then
+	local button = Instance.new("TextButton")
+	button.Name = "MobileAttackButton"
+	button.AnchorPoint = Vector2.new(1, 1)
+	button.Position = UDim2.fromScale(0.96, 0.9)
+	button.Size = UDim2.fromOffset(128, 128)
+	button.BackgroundColor3 = Color3.fromRGB(255, 62, 176)
+	button.BackgroundTransparency = 0.06
+	button.BorderSizePixel = 0
+	button.AutoButtonColor = true
+	button.Font = Enum.Font.GothamBlack
+	button.Text = "⚡\nATTACCA"
+	button.TextColor3 = Color3.fromRGB(255, 255, 255)
+	button.TextScaled = true
+	button.Visible = arena:GetAttribute("RaidState") == "ACTIVE"
+	button.Parent = screenGui
+	local buttonCorner = Instance.new("UICorner")
+	buttonCorner.CornerRadius = UDim.new(1, 0)
+	buttonCorner.Parent = button
+	local buttonStroke = Instance.new("UIStroke")
+	buttonStroke.Color = Color3.fromRGB(255, 205, 78)
+	buttonStroke.Thickness = 5
+	buttonStroke.Parent = button
+	button.Activated:Connect(function()
+		raidAttack("BrainrotRaidAttack", Enum.UserInputState.Begin)
+		button.Size = UDim2.fromOffset(116, 116)
+		TweenService:Create(button, TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(128, 128) }):Play()
+	end)
+	touchAttackButton = button
+end
 
 task.spawn(function()
 	while screenGui.Parent do
 		local state = arena:GetAttribute("RaidState")
-		local target = if state == "COUNTDOWN" then shuttleTarget else bossTarget
-		targetGui.Adornee = target
 		local character = player.Character
 		local root = if character then character:FindFirstChild("HumanoidRootPart") else nil
 		if root and root:IsA("BasePart") then
+			local isOutsideRaid = (Vector3.new(root.Position.X, 0, root.Position.Z) - Vector3.new(0, 0, 0)).Magnitude > 155
+			local newPlayerInLoft = isOutsideRaid and raidPortalTarget ~= nil
+			if playerInLoft ~= newPlayerInLoft then
+				playerInLoft = newPlayerInLoft
+				refreshCombatHint()
+			end
+			if touchAttackButton then
+				touchAttackButton.Visible = state == "ACTIVE" and not playerInLoft
+			end
+			local target = if playerInLoft and raidPortalTarget then raidPortalTarget elseif state == "COUNTDOWN" then shuttleTarget else bossTarget
+			targetGui.Adornee = target
 			local flatTarget = Vector3.new(target.Position.X, 5.9, target.Position.Z)
 			local flatRoot = Vector3.new(root.Position.X, 5.9, root.Position.Z)
 			local distance = (flatTarget - flatRoot).Magnitude
@@ -334,7 +389,10 @@ task.spawn(function()
 					marker.Transparency = if showPath then 0.14 + math.abs(math.sin(os.clock() * 3 + index)) * 0.25 else 1
 				end
 			end
-			if state == "COUNTDOWN" then
+			if playerInLoft then
+				targetLabel.Text = "ENTRA NEL RAID"
+				targetLabel.TextColor3 = Color3.fromRGB(45, 235, 255)
+			elseif state == "COUNTDOWN" then
 				targetLabel.Text = "VAI ALLO SHUTTLE"
 				targetLabel.TextColor3 = Color3.fromRGB(45, 235, 255)
 			elseif state == "ACTIVE" then
