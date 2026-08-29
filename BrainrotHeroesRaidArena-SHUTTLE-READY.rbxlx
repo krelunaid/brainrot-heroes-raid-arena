@@ -1,0 +1,1915 @@
+<roblox version="4">
+  <Item class="Lighting" referent="0">
+    <Properties>
+      <string name="Name">Lighting</string>
+      <float name="Brightness">3</float>
+      <float name="ClockTime">22.4</float>
+      <float name="EnvironmentDiffuseScale">0.35</float>
+      <float name="EnvironmentSpecularScale">0.65</float>
+      <bool name="GlobalShadows">true</bool>
+      <token name="Technology">4</token>
+    </Properties>
+  </Item>
+  <Item class="ServerScriptService" referent="1">
+    <Properties>
+      <string name="Name">ServerScriptService</string>
+    </Properties>
+    <Item class="Script" referent="2">
+      <Properties>
+        <string name="Name">ArenaBuilder</string>
+        <token name="RunContext">0</token>
+        <string name="Source"><![CDATA[--!strict
+
+-- Brainrot Heroes Raid Arena
+-- Builds a reusable, original raid room without external or copyrighted assets.
+
+local Lighting = game:GetService("Lighting")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+
+local ARENA_NAME = "BrainrotHeroesRaidArena"
+local ORIGIN = Vector3.new(0, 0, 0)
+local ARENA_RADIUS = 112
+
+local COLORS = {
+	void = Color3.fromRGB(18, 21, 48),
+	stone = Color3.fromRGB(52, 58, 93),
+	stoneLight = Color3.fromRGB(80, 87, 128),
+	cyan = Color3.fromRGB(45, 235, 255),
+	purple = Color3.fromRGB(170, 67, 255),
+	pink = Color3.fromRGB(255, 68, 184),
+	gold = Color3.fromRGB(255, 204, 76),
+	white = Color3.fromRGB(239, 249, 255),
+}
+
+local HERO_PROFILES = {
+	{ name = "Turbo Tasso", rarity = "EPICO", power = "Scatto Fulmineo", damage = 520, kind = "Damage", description = "Carica il boss e lascia una scia elettrica che potenzia gli alleati." },
+	{ name = "Gatto Galattico", rarity = "MITICO", power = "Zampa Cosmica", damage = 640, kind = "Damage", description = "Apre una mini galassia che rallenta il mostro e moltiplica i frammenti." },
+	{ name = "Cocco Drago", rarity = "LEGGENDARIO", power = "Fiamma Tropicale", damage = 820, kind = "Damage", description = "Sputa un vortice caldo che rompe lo scudo del Brainrot Hero." },
+	{ name = "Panda Plasma", rarity = "EPICO", power = "Abbraccio Ionico", damage = 220, kind = "Shield", description = "Protegge la squadra con una barriera al plasma color ciano." },
+	{ name = "Gorilla Gelato", rarity = "MITICO", power = "Pugno Granita", damage = 610, kind = "Freeze", description = "Congela il terreno e blocca gli attacchi più forti del boss." },
+	{ name = "Volpe Vortex", rarity = "LEGGENDARIO", power = "Coda Tornado", damage = 760, kind = "Damage", description = "Crea un vortice viola che trascina i frammenti verso la squadra." },
+	{ name = "Axolotl Astro", rarity = "EPICO", power = "Bolla Stellare", damage = 180, kind = "Heal", description = "Cura gli Heroes vicini e rianima un alleato durante il raid." },
+	{ name = "Robot Raviolo", rarity = "SEGRETO", power = "Salsa Suprema", damage = 1000, kind = "Damage", description = "Attiva una modalità segreta che aumenta temporaneamente tutti i danni." },
+}
+
+if workspace:FindFirstChild(ARENA_NAME) then
+	workspace[ARENA_NAME]:Destroy()
+end
+
+local arena = Instance.new("Model")
+arena.Name = ARENA_NAME
+arena:SetAttribute("ReadyForRaidLogic", true)
+arena:SetAttribute("RecommendedMaxRaiders", 50)
+arena:SetAttribute("RaidState", "COUNTDOWN")
+arena:SetAttribute("Countdown", 25)
+arena.Parent = workspace
+
+local oldRemotes = ReplicatedStorage:FindFirstChild("BrainrotHeroesRemotes")
+if oldRemotes then
+	oldRemotes:Destroy()
+end
+local remotes = Instance.new("Folder")
+remotes.Name = "BrainrotHeroesRemotes"
+remotes.Parent = ReplicatedStorage
+local useHeroPower = Instance.new("RemoteEvent")
+useHeroPower.Name = "UseHeroPower"
+useHeroPower.Parent = remotes
+
+local geometry = Instance.new("Folder")
+geometry.Name = "Architecture"
+geometry.Parent = arena
+
+local effects = Instance.new("Folder")
+effects.Name = "Effects"
+effects.Parent = arena
+
+local gameplay = Instance.new("Folder")
+gameplay.Name = "GameplayMarkers"
+gameplay.Parent = arena
+local bossDamaged = Instance.new("BindableEvent")
+bossDamaged.Name = "BossDamaged"
+bossDamaged.Parent = gameplay
+
+local function part(
+	parent: Instance,
+	name: string,
+	size: Vector3,
+	cframe: CFrame,
+	color: Color3,
+	material: Enum.Material,
+	transparency: number?,
+	shape: Enum.PartType?
+): Part
+	local object = Instance.new("Part")
+	object.Name = name
+	object.Anchored = true
+	object.Size = size
+	object.CFrame = cframe
+	object.Color = color
+	object.Material = material
+	object.Transparency = transparency or 0
+	object.TopSurface = Enum.SurfaceType.Smooth
+	object.BottomSurface = Enum.SurfaceType.Smooth
+	object.CastShadow = material ~= Enum.Material.Neon
+	if shape then
+		object.Shape = shape
+	end
+	object.Parent = parent
+	return object
+end
+
+local function cylinder(
+	parent: Instance,
+	name: string,
+	diameter: number,
+	height: number,
+	y: number,
+	color: Color3,
+	material: Enum.Material,
+	transparency: number?
+): Part
+	return part(
+		parent,
+		name,
+		Vector3.new(height, diameter, diameter),
+		CFrame.new(ORIGIN + Vector3.new(0, y, 0)) * CFrame.Angles(0, 0, math.rad(90)),
+		color,
+		material,
+		transparency,
+		Enum.PartType.Cylinder
+	)
+end
+
+local function ring(
+	parent: Instance,
+	name: string,
+	radius: number,
+	width: number,
+	height: number,
+	y: number,
+	color: Color3,
+	material: Enum.Material,
+	segments: number,
+	transparency: number?
+)
+	local folder = Instance.new("Folder")
+	folder.Name = name
+	folder.Parent = parent
+	local segmentLength = (2 * math.pi * radius / segments) * 1.04
+	for index = 1, segments do
+		local angle = ((index - 1) / segments) * math.pi * 2
+		local position = ORIGIN + Vector3.new(math.cos(angle) * radius, y, math.sin(angle) * radius)
+		part(
+			folder,
+			string.format("Segment%02d", index),
+			Vector3.new(segmentLength, height, width),
+			CFrame.new(position) * CFrame.Angles(0, -angle, 0),
+			color,
+			material,
+			transparency
+		)
+	end
+	return folder
+end
+
+local function addPointLight(parent: Instance, color: Color3, brightness: number, range: number)
+	local light = Instance.new("PointLight")
+	light.Color = color
+	light.Brightness = brightness
+	light.Range = range
+	light.Shadows = false
+	light.Parent = parent
+	return light
+end
+
+local function addBillboard(parent: BasePart, title: string, subtitle: string, color: Color3)
+	local isHeroLabel = string.sub(title, 1, 4) == "HERO"
+	local gui = Instance.new("BillboardGui")
+	gui.Name = "HologramLabel"
+	gui.Size = if isHeroLabel then UDim2.fromOffset(230, 62) else UDim2.fromOffset(390, 104)
+	gui.StudsOffsetWorldSpace = if isHeroLabel then Vector3.new(0, 4.5, 0) else Vector3.new(0, 4.2, 0)
+	gui.AlwaysOnTop = false
+	gui.MaxDistance = if isHeroLabel then 52 else 145
+	gui.LightInfluence = 0.1
+	gui.Parent = parent
+
+	local frame = Instance.new("Frame")
+	frame.BackgroundColor3 = COLORS.void
+	frame.BackgroundTransparency = if isHeroLabel then 0.32 else 0.22
+	frame.BorderSizePixel = 0
+	frame.Size = UDim2.fromScale(1, 1)
+	frame.Parent = gui
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 22)
+	corner.Parent = frame
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = color
+	stroke.Thickness = if isHeroLabel then 2 else 3
+	stroke.Transparency = 0.22
+	stroke.Parent = frame
+
+	local gradient = Instance.new("UIGradient")
+	gradient.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, color),
+		ColorSequenceKeypoint.new(0.5, COLORS.white),
+		ColorSequenceKeypoint.new(1, COLORS.purple),
+	})
+	gradient.Rotation = 10
+	gradient.Parent = stroke
+
+	local titleLabel = Instance.new("TextLabel")
+	titleLabel.Name = "Title"
+	titleLabel.BackgroundTransparency = 1
+	titleLabel.Position = UDim2.fromScale(0.04, 0.08)
+	titleLabel.Size = UDim2.fromScale(0.92, if isHeroLabel then 0.42 else 0.48)
+	titleLabel.Font = Enum.Font.GothamBlack
+	titleLabel.Text = title
+	titleLabel.TextColor3 = COLORS.white
+	titleLabel.TextScaled = true
+	titleLabel.Parent = frame
+
+	local subtitleLabel = Instance.new("TextLabel")
+	subtitleLabel.Name = "Subtitle"
+	subtitleLabel.BackgroundTransparency = 1
+	subtitleLabel.Position = UDim2.fromScale(0.04, if isHeroLabel then 0.54 else 0.57)
+	subtitleLabel.Size = UDim2.fromScale(0.92, if isHeroLabel then 0.24 else 0.28)
+	subtitleLabel.Font = Enum.Font.GothamBold
+	subtitleLabel.Text = subtitle
+	subtitleLabel.TextColor3 = color
+	subtitleLabel.TextScaled = true
+	subtitleLabel.Parent = frame
+
+	return subtitleLabel
+end
+
+local function createHeroAltar(index: number, angle: number)
+	local profile = HERO_PROFILES[index]
+	local radius = 76
+	local position = ORIGIN + Vector3.new(math.cos(angle) * radius, 4.2, math.sin(angle) * radius)
+	local altar = Instance.new("Model")
+	altar.Name = string.format("HeroAltar%02d", index)
+	altar:SetAttribute("HeroSlot", index)
+	altar:SetAttribute("Occupied", false)
+	altar:SetAttribute("HeroName", profile.name)
+	altar:SetAttribute("Rarity", profile.rarity)
+	altar:SetAttribute("Power", profile.power)
+	altar.Parent = geometry
+
+	local base = part(
+		altar,
+		"Base",
+		Vector3.new(2.5, 15, 15),
+		CFrame.new(position) * CFrame.Angles(0, 0, math.rad(90)),
+		COLORS.stoneLight,
+		Enum.Material.Slate,
+		0,
+		Enum.PartType.Cylinder
+	)
+	local accentColor = if index % 2 == 0 then COLORS.cyan else COLORS.purple
+	local glow = part(
+		altar,
+		"HeroGlow",
+		Vector3.new(0.45, 11.5, 11.5),
+		base.CFrame + Vector3.new(0, 1.5, 0),
+		accentColor,
+		Enum.Material.Neon,
+		0.08,
+		Enum.PartType.Cylinder
+	)
+	glow.CanCollide = false
+	addPointLight(glow, accentColor, 1.5, 18)
+
+	local crystal = part(
+		altar,
+		"HeroCrystal",
+		Vector3.new(3.8, 9, 3.8),
+		CFrame.new(position + Vector3.new(0, 7.5, 0)) * CFrame.Angles(0, angle, math.rad(45)),
+		accentColor,
+		Enum.Material.Glass,
+		0.18
+	)
+	crystal.CanCollide = false
+	local inspectPrompt = Instance.new("ProximityPrompt")
+	inspectPrompt.Name = "InspectHero"
+	inspectPrompt.ActionText = "Scopri Hero"
+	inspectPrompt.ObjectText = string.format("%s • %s", profile.name, profile.rarity)
+	inspectPrompt.KeyboardKeyCode = Enum.KeyCode.E
+	inspectPrompt.HoldDuration = 0.15
+	inspectPrompt.MaxActivationDistance = 11
+	inspectPrompt.RequiresLineOfSight = false
+	inspectPrompt:SetAttribute("HeroName", profile.name)
+	inspectPrompt:SetAttribute("Rarity", profile.rarity)
+	inspectPrompt:SetAttribute("Power", profile.power)
+	inspectPrompt:SetAttribute("Description", profile.description)
+	inspectPrompt:SetAttribute("Accent", if index % 2 == 0 then "Cyan" else "Purple")
+	inspectPrompt:SetAttribute("SlotIndex", index)
+	inspectPrompt.Parent = crystal
+
+	local marker = part(
+		gameplay,
+		string.format("HeroSlot%02d", index),
+		Vector3.new(8, 0.4, 8),
+		CFrame.new(position + Vector3.new(0, 2.8, 0)),
+		accentColor,
+		Enum.Material.Neon,
+		0.88
+	)
+	marker.CanCollide = false
+	marker:SetAttribute("SlotIndex", index)
+
+	return glow, crystal
+end
+
+local function createPillar(index: number, angle: number)
+	local radius = 101
+	local position = ORIGIN + Vector3.new(math.cos(angle) * radius, 18, math.sin(angle) * radius)
+	local pillar = Instance.new("Model")
+	pillar.Name = string.format("Pillar%02d", index)
+	pillar.Parent = geometry
+
+	part(pillar, "Column", Vector3.new(7, 36, 7), CFrame.new(position), COLORS.stone, Enum.Material.Slate)
+	part(
+		pillar,
+		"LightChannel",
+		Vector3.new(7.35, 18, 0.35),
+		CFrame.new(position) * CFrame.Angles(0, -angle, 0),
+		if index % 2 == 0 then COLORS.cyan else COLORS.purple,
+		Enum.Material.Neon,
+		0.08
+	).CanCollide = false
+	part(
+		pillar,
+		"Crown",
+		Vector3.new(9, 3, 9),
+		CFrame.new(position + Vector3.new(0, 19, 0)),
+		COLORS.stoneLight,
+		Enum.Material.Metal
+	)
+end
+
+local function createPortal()
+	local portalModel = Instance.new("Model")
+	portalModel.Name = "BossPortal"
+	portalModel.Parent = geometry
+
+	local portalCenter = ORIGIN + Vector3.new(0, 25, -95)
+	part(
+		portalModel,
+		"LeftTower",
+		Vector3.new(12, 52, 15),
+		CFrame.new(portalCenter + Vector3.new(-22, 0, 0)),
+		COLORS.stone,
+		Enum.Material.Slate
+	)
+	part(
+		portalModel,
+		"RightTower",
+		Vector3.new(12, 52, 15),
+		CFrame.new(portalCenter + Vector3.new(22, 0, 0)),
+		COLORS.stone,
+		Enum.Material.Slate
+	)
+	part(
+		portalModel,
+		"Crown",
+		Vector3.new(56, 9, 18),
+		CFrame.new(portalCenter + Vector3.new(0, 29, 0)),
+		COLORS.stoneLight,
+		Enum.Material.Metal
+	)
+
+	local portal = part(
+		portalModel,
+		"Rift",
+		Vector3.new(2.2, 42, 42),
+		CFrame.new(portalCenter) * CFrame.Angles(0, math.rad(90), 0),
+		COLORS.purple,
+		Enum.Material.Neon,
+		0.28,
+		Enum.PartType.Cylinder
+	)
+	portal.CanCollide = false
+	addPointLight(portal, COLORS.purple, 5, 70)
+
+	local inner = part(
+		portalModel,
+		"RiftCore",
+		Vector3.new(2.5, 31, 31),
+		portal.CFrame + Vector3.new(0, 0, 0.4),
+		COLORS.void,
+		Enum.Material.Glass,
+		0.08,
+		Enum.PartType.Cylinder
+	)
+	inner.CanCollide = false
+
+	for index = 1, 12 do
+		local angle = (index / 12) * math.pi * 2
+		local shardPosition = portalCenter
+			+ Vector3.new(math.cos(angle) * 26, math.sin(angle) * 26, -1.5)
+		local shard = part(
+			portalModel,
+			string.format("Rune%02d", index),
+			Vector3.new(2.2, 5.5, 2.2),
+			CFrame.new(shardPosition) * CFrame.Angles(angle, 0, math.rad(45)),
+			if index % 2 == 0 then COLORS.cyan else COLORS.pink,
+			Enum.Material.Neon,
+			0.05
+		)
+		shard.CanCollide = false
+	end
+
+	local particles = Instance.new("ParticleEmitter")
+	particles.Name = "RiftParticles"
+	particles.Color = ColorSequence.new(COLORS.purple, COLORS.cyan)
+	particles.LightEmission = 1
+	particles.Rate = 22
+	particles.Lifetime = NumberRange.new(1.5, 3.2)
+	particles.Speed = NumberRange.new(1, 4)
+	particles.SpreadAngle = Vector2.new(180, 180)
+	particles.Rotation = NumberRange.new(0, 360)
+	particles.RotSpeed = NumberRange.new(-90, 90)
+	particles.Size = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.7),
+		NumberSequenceKeypoint.new(0.5, 0.25),
+		NumberSequenceKeypoint.new(1, 0),
+	})
+	particles.Parent = portal
+
+	return portal
+end
+
+local function createBoss()
+	local boss = Instance.new("Model")
+	boss.Name = "PrismaRex"
+	boss:SetAttribute("DisplayName", "Prisma Rex")
+	boss:SetAttribute("BossType", "BrainrotHero")
+	boss:SetAttribute("RewardRule", "One full Hero, fragments for all other eligible raiders")
+	boss:SetAttribute("MaxHealth", 10000)
+	boss:SetAttribute("Health", 10000)
+	boss.Parent = arena
+
+	-- The boss owns the central platform; the countdown crystal sits to its left.
+	local center = ORIGIN + Vector3.new(0, 5.2, 0)
+	local bossPurple = Color3.fromRGB(105, 42, 204)
+	local bossPink = Color3.fromRGB(255, 75, 190)
+	local bossCyan = Color3.fromRGB(53, 239, 255)
+	local bossGold = Color3.fromRGB(255, 211, 75)
+
+	local torso = part(
+		boss,
+		"Torso",
+		Vector3.new(18, 20, 11),
+		CFrame.new(center + Vector3.new(0, 20, 0)),
+		bossPurple,
+		Enum.Material.SmoothPlastic
+	)
+	boss.PrimaryPart = torso
+
+	for _, side in { -1, 1 } do
+		part(
+			boss,
+			if side < 0 then "LeftLeg" else "RightLeg",
+			Vector3.new(6, 13, 7),
+			CFrame.new(center + Vector3.new(side * 5, 8, 0)),
+			COLORS.stone,
+			Enum.Material.Metal
+		)
+		part(
+			boss,
+			if side < 0 then "LeftBoot" else "RightBoot",
+			Vector3.new(7.5, 4.5, 10),
+			CFrame.new(center + Vector3.new(side * 5, 2.6, 1.3)),
+			COLORS.void,
+			Enum.Material.Metal
+		)
+		part(
+			boss,
+			if side < 0 then "LeftArm" else "RightArm",
+			Vector3.new(5.5, 19, 5.5),
+			CFrame.new(center + Vector3.new(side * 13, 18, 0)) * CFrame.Angles(0, 0, math.rad(side * -8)),
+			bossPurple,
+			Enum.Material.SmoothPlastic
+		)
+		part(
+			boss,
+			if side < 0 then "LeftShoulder" else "RightShoulder",
+			Vector3.new(9, 9, 9),
+			CFrame.new(center + Vector3.new(side * 12, 27, 0)),
+			bossPink,
+			Enum.Material.Glass,
+			0.08,
+			Enum.PartType.Ball
+		)
+		local hand = part(
+			boss,
+			if side < 0 then "LeftPowerFist" else "RightPowerFist",
+			Vector3.new(7, 7, 7),
+			CFrame.new(center + Vector3.new(side * 14.2, 8.2, 0.8)),
+			bossCyan,
+			Enum.Material.Neon,
+			0.08,
+			Enum.PartType.Ball
+		)
+		addPointLight(hand, bossCyan, 1.5, 20)
+	end
+
+	local head = part(
+		boss,
+		"Head",
+		Vector3.new(16, 16, 16),
+		CFrame.new(center + Vector3.new(0, 37, 0)),
+		bossPink,
+		Enum.Material.SmoothPlastic,
+		0,
+		Enum.PartType.Ball
+	)
+
+	for _, eyeX in { -3.2, 3.2 } do
+		part(
+			boss,
+			"EyeWhite",
+			Vector3.new(4.5, 5.2, 2.1),
+			CFrame.new(center + Vector3.new(eyeX, 39, 7.1)),
+			COLORS.white,
+			Enum.Material.SmoothPlastic,
+			0,
+			Enum.PartType.Ball
+		).CanCollide = false
+		part(
+			boss,
+			"EyeGlow",
+			Vector3.new(1.9, 2.5, 1),
+			CFrame.new(center + Vector3.new(eyeX, 39, 8.2)),
+			bossCyan,
+			Enum.Material.Neon,
+			0,
+			Enum.PartType.Ball
+		).CanCollide = false
+	end
+
+	part(
+		boss,
+		"Mouth",
+		Vector3.new(7.5, 2.1, 1),
+		CFrame.new(center + Vector3.new(0, 33.8, 7.2)),
+		COLORS.void,
+		Enum.Material.SmoothPlastic
+	).CanCollide = false
+	for toothIndex = -2, 2 do
+		part(
+			boss,
+			"Tooth",
+			Vector3.new(0.8, 1.15, 0.45),
+			CFrame.new(center + Vector3.new(toothIndex * 1.25, 34.15, 7.75)),
+			COLORS.white,
+			Enum.Material.SmoothPlastic
+		).CanCollide = false
+	end
+
+	for spikeIndex = -2, 2 do
+		local spikeHeight = 7.5 - math.abs(spikeIndex) * 1.1
+		part(
+			boss,
+			"CrownSpike",
+			Vector3.new(2.3, spikeHeight, 2.3),
+			CFrame.new(center + Vector3.new(spikeIndex * 3.1, 47 + spikeHeight * 0.25, 0))
+				* CFrame.Angles(0, 0, math.rad(spikeIndex * -8)),
+			bossGold,
+			Enum.Material.Neon,
+			0.04
+		).CanCollide = false
+	end
+
+	local core = part(
+		boss,
+		"HeroCore",
+		Vector3.new(8, 8, 4),
+		CFrame.new(center + Vector3.new(0, 21, 6)),
+		bossCyan,
+		Enum.Material.Glass,
+		0.08,
+		Enum.PartType.Ball
+	)
+	core.CanCollide = false
+	addPointLight(core, bossCyan, 3, 34)
+
+	local shield = part(
+		boss,
+		"CountdownShield",
+		Vector3.new(42, 50, 42),
+		CFrame.new(center + Vector3.new(0, 23, 0)),
+		bossCyan,
+		Enum.Material.ForceField,
+		0.9,
+		Enum.PartType.Ball
+	)
+	shield.CanCollide = false
+	shield:SetAttribute("DisableWhenRaidStarts", true)
+
+	local nameGui = Instance.new("BillboardGui")
+	nameGui.Name = "BossName"
+	nameGui.Size = UDim2.fromOffset(260, 44)
+	nameGui.StudsOffsetWorldSpace = Vector3.new(0, 6, 0)
+	nameGui.AlwaysOnTop = false
+	nameGui.MaxDistance = 260
+	nameGui.Parent = head
+	local nameLabel = Instance.new("TextLabel")
+	nameLabel.BackgroundColor3 = COLORS.void
+	nameLabel.BackgroundTransparency = 0.18
+	nameLabel.BorderSizePixel = 0
+	nameLabel.Size = UDim2.fromScale(1, 1)
+	nameLabel.Font = Enum.Font.GothamBlack
+	nameLabel.Text = "PRISMA REX • HERO BOSS"
+	nameLabel.TextColor3 = bossGold
+	nameLabel.TextScaled = true
+	nameLabel.Parent = nameGui
+	local nameCorner = Instance.new("UICorner")
+	nameCorner.CornerRadius = UDim.new(0, 18)
+	nameCorner.Parent = nameLabel
+	local nameStroke = Instance.new("UIStroke")
+	nameStroke.Color = bossPink
+	nameStroke.Thickness = 3
+	nameStroke.Parent = nameLabel
+
+	return boss, core, nameLabel
+end
+
+-- Layered arena floor and safe combat boundary.
+cylinder(geometry, "Foundation", ARENA_RADIUS * 2, 8, -4, COLORS.void, Enum.Material.Basalt)
+cylinder(geometry, "MainFloor", 205, 1.6, 0.3, COLORS.stone, Enum.Material.Slate)
+cylinder(geometry, "InnerFloor", 128, 0.5, 1.25, COLORS.stoneLight, Enum.Material.Metal)
+ring(geometry, "OuterGoldTrim", 104, 3.2, 1.1, 1.25, COLORS.gold, Enum.Material.Neon, 64, 0.22)
+ring(geometry, "EnergyCircuitA", 87, 1.25, 0.25, 1.45, COLORS.cyan, Enum.Material.Neon, 48, 0.3)
+ring(geometry, "EnergyCircuitB", 61, 1.5, 0.25, 1.58, COLORS.purple, Enum.Material.Neon, 40, 0.28)
+ring(geometry, "CentralHalo", 31, 2.4, 0.35, 2.05, COLORS.pink, Enum.Material.Neon, 32, 0.22)
+
+-- Radial luminous paths keep the room readable during a crowded raid.
+for index = 1, 8 do
+	local angle = ((index - 1) / 8) * math.pi * 2
+	local pathCenter = ORIGIN + Vector3.new(math.cos(angle) * 45, 1.58, math.sin(angle) * 45)
+	part(
+		geometry,
+		string.format("EnergyPath%02d", index),
+		Vector3.new(72, 0.22, 1.2),
+		CFrame.new(pathCenter) * CFrame.Angles(0, -angle, 0),
+		if index % 2 == 0 then COLORS.cyan else COLORS.purple,
+		Enum.Material.Neon,
+		0.46
+	).CanCollide = false
+end
+
+-- Walls and tall rhythm pillars create a dramatic silhouette.
+ring(geometry, "ArenaWall", 110, 5.5, 18, 9, COLORS.stone, Enum.Material.Slate, 64, 0)
+for index = 1, 12 do
+	createPillar(index, ((index - 1) / 12) * math.pi * 2)
+end
+
+-- Elevated arena lights reveal the architecture while preserving the neon palette.
+for index = 1, 8 do
+	local angle = ((index - 1) / 8) * math.pi * 2 + math.rad(22.5)
+	local lampPosition = ORIGIN + Vector3.new(math.cos(angle) * 84, 31, math.sin(angle) * 84)
+	local lampColor = if index % 2 == 0 then Color3.fromRGB(210, 235, 255) else Color3.fromRGB(255, 226, 185)
+	local lamp = part(
+		effects,
+		string.format("ArenaLamp%02d", index),
+		Vector3.new(4.5, 4.5, 4.5),
+		CFrame.new(lampPosition),
+		lampColor,
+		Enum.Material.Neon,
+		0.08,
+		Enum.PartType.Ball
+	)
+	lamp.CanCollide = false
+	addPointLight(lamp, lampColor, 2.6, 60)
+end
+
+-- Eight large hero displays; raid/player markers remain configurable up to 50.
+local animatedGlows = {}
+local floatingCrystals = {}
+for index = 1, 8 do
+	local glow, crystal = createHeroAltar(index, ((index - 1) / 8) * math.pi * 2 + math.rad(22.5))
+	table.insert(animatedGlows, glow)
+	table.insert(floatingCrystals, crystal)
+end
+
+-- Central raid core and holographic countdown.
+local coreBase = cylinder(geometry, "RaidCoreBase", 42, 4, 3.2, COLORS.void, Enum.Material.Metal)
+local coreGlow = cylinder(effects, "RaidCoreGlow", 32, 0.8, 5.6, COLORS.cyan, Enum.Material.Neon, 0.5)
+coreGlow.CanCollide = false
+addPointLight(coreGlow, COLORS.cyan, 3.2, 50)
+
+local coreCrystal = part(
+	effects,
+	"CountdownCrystal",
+	Vector3.new(7, 14, 7),
+	CFrame.new(ORIGIN + Vector3.new(-34, 14, -4)) * CFrame.Angles(0, math.rad(45), math.rad(45)),
+	COLORS.white,
+	Enum.Material.Glass,
+	0.15
+)
+coreCrystal.CanCollide = false
+local countdownLabel = addBillboard(coreCrystal, "MEGA RAID", "EVENTO IN PREPARAZIONE", COLORS.gold)
+
+local raidSpawn = part(
+	gameplay,
+	"RaidBossSpawn",
+	Vector3.new(18, 0.5, 18),
+	CFrame.new(ORIGIN + Vector3.new(0, 5.5, 0)),
+	COLORS.pink,
+	Enum.Material.Neon,
+	0.9
+)
+raidSpawn.CanCollide = false
+raidSpawn:SetAttribute("Purpose", "Spawn the original Brainrot Hero boss here")
+
+local playerSpawn = Instance.new("SpawnLocation")
+playerSpawn.Name = "PlayerSpawn"
+playerSpawn.Anchored = true
+playerSpawn.CanCollide = true
+playerSpawn.Neutral = true
+playerSpawn.Size = Vector3.new(14, 1, 14)
+playerSpawn.CFrame = CFrame.new(ORIGIN + Vector3.new(0, 2.2, 58))
+playerSpawn.Material = Enum.Material.SmoothPlastic
+playerSpawn.Color = COLORS.stone
+playerSpawn.Transparency = 1
+playerSpawn.Duration = 0
+playerSpawn.Parent = gameplay
+
+local portal = createPortal()
+local boss, bossCore, bossNameLabel = createBoss()
+local bossBasePivot = boss:GetPivot()
+
+local powerCooldowns: { [Player]: number } = {}
+
+local function updateBossLabel()
+	local health = boss:GetAttribute("Health") :: number
+	local maxHealth = boss:GetAttribute("MaxHealth") :: number
+	local percent = math.max(0, math.ceil((health / maxHealth) * 100))
+	bossNameLabel.Text = string.format("PRISMA REX • %d%%", percent)
+end
+
+local function resetBoss()
+	boss:SetAttribute("Health", boss:GetAttribute("MaxHealth"))
+	boss:SetAttribute("Defeated", false)
+	bossCore.Color = COLORS.cyan
+	updateBossLabel()
+end
+
+local function showPowerImpact(originPosition: Vector3, damage: number, powerName: string)
+	local projectile = part(
+		effects,
+		"HeroPowerProjectile",
+		Vector3.new(3.5, 3.5, 3.5),
+		CFrame.new(originPosition),
+		COLORS.cyan,
+		Enum.Material.Neon,
+		0.06,
+		Enum.PartType.Ball
+	)
+	projectile.CanCollide = false
+	addPointLight(projectile, COLORS.cyan, 2.5, 22)
+	local travel = TweenService:Create(projectile, TweenInfo.new(0.38, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+		CFrame = CFrame.new(bossCore.Position),
+		Size = Vector3.new(6, 6, 6),
+		Color = COLORS.gold,
+	})
+	travel:Play()
+	travel.Completed:Once(function()
+		if projectile.Parent then
+			projectile:Destroy()
+		end
+
+		local impact = part(
+			effects,
+			"PowerImpact",
+			Vector3.new(5, 5, 5),
+			CFrame.new(bossCore.Position),
+			COLORS.gold,
+			Enum.Material.Neon,
+			0.12,
+			Enum.PartType.Ball
+		)
+		impact.CanCollide = false
+		local impactGui = Instance.new("BillboardGui")
+		impactGui.Size = UDim2.fromOffset(280, 92)
+		impactGui.StudsOffsetWorldSpace = Vector3.new(0, 6, 0)
+		impactGui.AlwaysOnTop = true
+		impactGui.Parent = impact
+		local impactText = Instance.new("TextLabel")
+		impactText.BackgroundTransparency = 1
+		impactText.Size = UDim2.fromScale(1, 1)
+		impactText.Font = Enum.Font.GothamBlack
+		impactText.Text = string.format("-%d\n%s", damage, string.upper(powerName))
+		impactText.TextColor3 = COLORS.gold
+		impactText.TextStrokeColor3 = COLORS.void
+		impactText.TextStrokeTransparency = 0
+		impactText.TextScaled = true
+		impactText.Parent = impactGui
+		TweenService:Create(impact, TweenInfo.new(0.7, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			CFrame = impact.CFrame + Vector3.new(0, 10, 0),
+			Size = Vector3.new(15, 15, 15),
+			Transparency = 1,
+		}):Play()
+		TweenService:Create(impactText, TweenInfo.new(0.7), { TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
+		task.delay(0.75, function()
+			if impact.Parent then
+				impact:Destroy()
+			end
+		end)
+	end)
+end
+
+useHeroPower.OnServerEvent:Connect(function(player: Player, slotIndex: number)
+	if type(slotIndex) ~= "number" or slotIndex % 1 ~= 0 then
+		return
+	end
+	local profile = HERO_PROFILES[slotIndex]
+	if not profile then
+		return
+	end
+
+	local character = player.Character
+	local root = if character then character:FindFirstChild("HumanoidRootPart") else nil
+	if not root or not root:IsA("BasePart") or (root.Position - ORIGIN).Magnitude > 145 then
+		useHeroPower:FireClient(player, false, "Avvicinati all'arena per usare il potere.")
+		return
+	end
+
+	local now = os.clock()
+	local readyAt = powerCooldowns[player] or 0
+	if now < readyAt then
+		useHeroPower:FireClient(player, false, string.format("Potere in ricarica: %.1fs", readyAt - now))
+		return
+	end
+	if boss:GetAttribute("Defeated") then
+		useHeroPower:FireClient(player, false, "Prisma Rex è già stato sconfitto!")
+		return
+	end
+	if arena:GetAttribute("RaidState") ~= "ACTIVE" then
+		useHeroPower:FireClient(player, false, "Il raid non è ancora iniziato!")
+		return
+	end
+	powerCooldowns[player] = now + 6
+
+	if profile.kind == "Shield" and character then
+		local forceField = Instance.new("ForceField")
+		forceField.Visible = true
+		forceField.Parent = character
+		task.delay(5, function()
+			if forceField.Parent then
+				forceField:Destroy()
+			end
+		end)
+	elseif profile.kind == "Heal" and character then
+		local humanoid = character:FindFirstChildWhichIsA("Humanoid")
+		if humanoid then
+			humanoid.Health = humanoid.MaxHealth
+		end
+	elseif profile.kind == "Freeze" then
+		boss:SetAttribute("FrozenUntil", os.clock() + 3)
+	end
+
+	local currentHealth = boss:GetAttribute("Health") :: number
+	local newHealth = math.max(0, currentHealth - profile.damage)
+	showPowerImpact(root.Position + Vector3.new(0, 3, 0), profile.damage, profile.power)
+	boss:SetAttribute("Health", newHealth)
+	bossDamaged:Fire(player, profile.damage, profile.power)
+	updateBossLabel()
+	bossCore.Color = COLORS.white
+	task.delay(0.18, function()
+		if bossCore.Parent then
+			bossCore.Color = COLORS.cyan
+		end
+	end)
+	useHeroPower:FireClient(player, true, string.format("COLPO! -%d", profile.damage))
+
+	if newHealth <= 0 then
+		boss:SetAttribute("Defeated", true)
+		bossNameLabel.Text = "PRISMA REX SCONFITTO!"
+		bossCore.Color = COLORS.gold
+	end
+end)
+
+-- Original cosmic lighting; no external images or audio are required.
+Lighting.Brightness = 3.0
+Lighting.ExposureCompensation = 0.52
+Lighting.Ambient = Color3.fromRGB(96, 94, 127)
+Lighting.OutdoorAmbient = Color3.fromRGB(68, 78, 110)
+Lighting.ColorShift_Top = Color3.fromRGB(46, 34, 78)
+Lighting.FogColor = Color3.fromRGB(29, 31, 65)
+Lighting.FogStart = 240
+Lighting.FogEnd = 680
+
+for _, effectName in { "BrainrotArenaBloom", "BrainrotArenaColor", "BrainrotArenaAtmosphere" } do
+	local old = Lighting:FindFirstChild(effectName)
+	if old then
+		old:Destroy()
+	end
+end
+
+local bloom = Instance.new("BloomEffect")
+bloom.Name = "BrainrotArenaBloom"
+bloom.Intensity = 0.48
+bloom.Size = 24
+bloom.Threshold = 1.45
+bloom.Parent = Lighting
+
+local colorCorrection = Instance.new("ColorCorrectionEffect")
+colorCorrection.Name = "BrainrotArenaColor"
+colorCorrection.Brightness = 0.05
+colorCorrection.Contrast = 0.06
+colorCorrection.Saturation = 0.08
+colorCorrection.TintColor = Color3.fromRGB(239, 242, 255)
+colorCorrection.Parent = Lighting
+
+local atmosphere = Instance.new("Atmosphere")
+atmosphere.Name = "BrainrotArenaAtmosphere"
+atmosphere.Color = Color3.fromRGB(91, 78, 156)
+atmosphere.Decay = Color3.fromRGB(17, 11, 38)
+atmosphere.Density = 0.08
+atmosphere.Glare = 0.2
+atmosphere.Haze = 0.65
+atmosphere.Parent = Lighting
+
+-- Slow, low-cost ambient motion. It gives the room life without flooding mobile devices.
+task.spawn(function()
+	local pulseInfo = TweenInfo.new(2.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
+	TweenService:Create(portal, pulseInfo, { Transparency = 0.5, Color = COLORS.pink }):Play()
+	TweenService:Create(bossCore, TweenInfo.new(1.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+		Transparency = 0.35,
+		Color = COLORS.gold,
+	}):Play()
+	TweenService:Create(coreGlow, TweenInfo.new(1.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+		Transparency = 0.68,
+		Color = COLORS.purple,
+	}):Play()
+	for index, glow in animatedGlows do
+		local target = if index % 2 == 0 then COLORS.purple else COLORS.cyan
+		TweenService:Create(glow, TweenInfo.new(2 + index * 0.08, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+			Transparency = 0.32,
+			Color = target,
+		}):Play()
+	end
+
+	local elapsed = 0
+	while arena.Parent do
+		local delta = task.wait(0.05)
+		elapsed += delta
+		coreCrystal.CFrame = CFrame.new(ORIGIN + Vector3.new(-34, 14 + math.sin(elapsed * 1.2) * 1.2, -4))
+			* CFrame.Angles(elapsed * 0.35, elapsed * 0.55, math.rad(45))
+		boss:PivotTo(bossBasePivot * CFrame.new(0, math.sin(elapsed * 0.85) * 0.75, 0) * CFrame.Angles(0, math.sin(elapsed * 0.42) * 0.035, 0))
+		for index, crystal in floatingCrystals do
+			crystal.CFrame *= CFrame.Angles(0, 0.012 + index * 0.0005, 0)
+		end
+	end
+end)
+
+-- Preview text is only used if the full raid controller is not present.
+task.spawn(function()
+	local previewMessages = {
+		"EVENTO IN PREPARAZIONE",
+		"1 HERO COMPLETO • FRAMMENTI PER TUTTI",
+		"COMBATTI PER ENTRARE NELL'ESTRAZIONE",
+	}
+	local index = 1
+	while arena.Parent do
+		if not arena:GetAttribute("RaidControllerActive") then
+			countdownLabel.Text = previewMessages[index]
+			index = (index % #previewMessages) + 1
+		end
+		task.wait(4.5)
+	end
+end)
+
+arena.PrimaryPart = coreBase
+print("Brainrot Heroes Raid Arena ready")
+]]></string>
+      </Properties>
+    </Item>
+    <Item class="Script" referent="3">
+      <Properties>
+        <string name="Name">RaidGameplay</string>
+        <token name="RunContext">0</token>
+        <string name="Source"><![CDATA[--!strict
+
+-- Complete raid loop, weapons, boss attacks, rewards, and shuttle presentation.
+
+local Debris = game:GetService("Debris")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerStorage = game:GetService("ServerStorage")
+local TweenService = game:GetService("TweenService")
+
+local arena = workspace:WaitForChild("BrainrotHeroesRaidArena") :: Model
+local geometry = arena:WaitForChild("Architecture")
+local effects = arena:WaitForChild("Effects")
+local gameplay = arena:WaitForChild("GameplayMarkers")
+local boss = arena:WaitForChild("PrismaRex") :: Model
+local bossCore = boss:WaitForChild("HeroCore") :: BasePart
+local bossShield = boss:WaitForChild("CountdownShield") :: BasePart
+local bossDamaged = gameplay:WaitForChild("BossDamaged") :: BindableEvent
+local powerRemote = (ReplicatedStorage:WaitForChild("BrainrotHeroesRemotes"):WaitForChild("UseHeroPower")) :: RemoteEvent
+
+local countdownCrystal = effects:WaitForChild("CountdownCrystal") :: BasePart
+local hologram = countdownCrystal:WaitForChild("HologramLabel") :: BillboardGui
+local hologramFrame = hologram:WaitForChild("Frame") :: Frame
+local countdownTitle = hologramFrame:WaitForChild("Title") :: TextLabel
+local countdownSubtitle = hologramFrame:WaitForChild("Subtitle") :: TextLabel
+local bossNameGui = (boss:WaitForChild("Head"):WaitForChild("BossName")) :: BillboardGui
+local bossName = bossNameGui:WaitForChild("TextLabel") :: TextLabel
+
+local COLORS = {
+	void = Color3.fromRGB(18, 21, 48),
+	stone = Color3.fromRGB(52, 58, 93),
+	cyan = Color3.fromRGB(45, 235, 255),
+	purple = Color3.fromRGB(170, 67, 255),
+	pink = Color3.fromRGB(255, 68, 184),
+	gold = Color3.fromRGB(255, 204, 76),
+	white = Color3.fromRGB(239, 249, 255),
+	green = Color3.fromRGB(105, 255, 145),
+}
+
+local COUNTDOWN_SECONDS = 25
+local RAID_SECONDS = 100
+local REWARD_SECONDS = 12
+local BOSS_MAX_HEALTH = 10000
+
+arena:SetAttribute("RaidControllerActive", true)
+
+local function makePart(
+	parent: Instance,
+	name: string,
+	size: Vector3,
+	cframe: CFrame,
+	color: Color3,
+	material: Enum.Material,
+	transparency: number?,
+	shape: Enum.PartType?
+): Part
+	local object = Instance.new("Part")
+	object.Name = name
+	object.Anchored = true
+	object.CanCollide = true
+	object.Size = size
+	object.CFrame = cframe
+	object.Color = color
+	object.Material = material
+	object.Transparency = transparency or 0
+	object.TopSurface = Enum.SurfaceType.Smooth
+	object.BottomSurface = Enum.SurfaceType.Smooth
+	if shape then
+		object.Shape = shape
+	end
+	object.Parent = parent
+	return object
+end
+
+local function addLight(parent: Instance, color: Color3, brightness: number, range: number)
+	local light = Instance.new("PointLight")
+	light.Color = color
+	light.Brightness = brightness
+	light.Range = range
+	light.Shadows = false
+	light.Parent = parent
+end
+
+local function setDisplay(title: string, subtitle: string, color: Color3)
+	countdownTitle.Text = title
+	countdownSubtitle.Text = subtitle
+	countdownSubtitle.TextColor3 = color
+end
+
+local function createRing(position: Vector3, color: Color3, startDiameter: number, endDiameter: number, lifetime: number)
+	local ring = makePart(
+		effects,
+		"Shockwave",
+		Vector3.new(0.4, startDiameter, startDiameter),
+		CFrame.new(position) * CFrame.Angles(0, 0, math.rad(90)),
+		color,
+		Enum.Material.Neon,
+		0.25,
+		Enum.PartType.Cylinder
+	)
+	ring.CanCollide = false
+	TweenService:Create(ring, TweenInfo.new(lifetime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Size = Vector3.new(0.15, endDiameter, endDiameter),
+		Transparency = 1,
+	}):Play()
+	Debris:AddItem(ring, lifetime + 0.15)
+end
+
+local function createBeam(fromPosition: Vector3, toPosition: Vector3, color: Color3, width: number, lifetime: number)
+	local distance = (toPosition - fromPosition).Magnitude
+	local beam = makePart(
+		effects,
+		"WeaponBeam",
+		Vector3.new(width, width, distance),
+		CFrame.lookAt((fromPosition + toPosition) * 0.5, toPosition),
+		color,
+		Enum.Material.Neon,
+		0.04
+	)
+	beam.CanCollide = false
+	TweenService:Create(beam, TweenInfo.new(lifetime), { Transparency = 1, Size = Vector3.new(0.1, 0.1, distance) }):Play()
+	Debris:AddItem(beam, lifetime + 0.1)
+end
+
+-- Shuttle landing zone.
+local shuttleArea = Instance.new("Model")
+shuttleArea.Name = "AstroShuttleBay"
+shuttleArea.Parent = geometry
+
+local padPosition = Vector3.new(-73, 2.1, 38)
+local landingPad = makePart(
+	shuttleArea,
+	"LandingPad",
+	Vector3.new(2.2, 38, 38),
+	CFrame.new(padPosition) * CFrame.Angles(0, 0, math.rad(90)),
+	COLORS.stone,
+	Enum.Material.Metal,
+	0,
+	Enum.PartType.Cylinder
+)
+
+for index = 1, 16 do
+	local angle = (index / 16) * math.pi * 2
+	local lightPosition = padPosition + Vector3.new(math.cos(angle) * 16.5, 1.5, math.sin(angle) * 16.5)
+	local lamp = makePart(
+		shuttleArea,
+		"PadLight",
+		Vector3.new(2, 0.6, 4.5),
+		CFrame.new(lightPosition) * CFrame.Angles(0, -angle, 0),
+		if index % 2 == 0 then COLORS.cyan else COLORS.gold,
+		Enum.Material.Neon,
+		0.08
+	)
+	lamp.CanCollide = false
+end
+
+local padLabelPart = makePart(
+	shuttleArea,
+	"PadSign",
+	Vector3.new(10, 5, 1),
+	CFrame.new(padPosition + Vector3.new(0, 5, 19)),
+	COLORS.void,
+	Enum.Material.Metal
+)
+local padGui = Instance.new("SurfaceGui")
+	padGui.Face = Enum.NormalId.Front
+	padGui.Parent = padLabelPart
+local padText = Instance.new("TextLabel")
+	padText.BackgroundTransparency = 1
+	padText.Size = UDim2.fromScale(1, 1)
+	padText.Font = Enum.Font.GothamBlack
+	padText.Text = "ASTRO SHUTTLE\nBAY 01"
+	padText.TextColor3 = COLORS.cyan
+	padText.TextScaled = true
+	padText.Parent = padGui
+
+local shuttle = Instance.new("Model")
+shuttle.Name = "NovaShuttle"
+shuttle:SetAttribute("DisplayName", "Nova Shuttle")
+shuttle.Parent = geometry
+
+local hull = makePart(shuttle, "Hull", Vector3.new(12, 10, 32), CFrame.new(), COLORS.white, Enum.Material.Metal)
+shuttle.PrimaryPart = hull
+local nose = makePart(shuttle, "Nose", Vector3.new(11.5, 10, 11.5), CFrame.new(0, 0, -17), COLORS.white, Enum.Material.Metal, 0, Enum.PartType.Ball)
+nose.CanCollide = false
+local cockpit = makePart(shuttle, "Cockpit", Vector3.new(8.5, 4.2, 9), CFrame.new(0, 5.1, -8), COLORS.cyan, Enum.Material.Glass, 0.18)
+cockpit.CanCollide = false
+
+for _, side in { -1, 1 } do
+	local wing = makePart(
+		shuttle,
+		if side < 0 then "LeftWing" else "RightWing",
+		Vector3.new(16, 1.4, 17),
+		CFrame.new(side * 12, -1, 2) * CFrame.Angles(0, math.rad(side * -12), math.rad(side * 5)),
+		COLORS.purple,
+		Enum.Material.Metal
+	)
+	wing.CanCollide = false
+	local wingTrim = makePart(
+		shuttle,
+		"WingTrim",
+		Vector3.new(12, 0.5, 2),
+		wing.CFrame * CFrame.new(0, 1, -7),
+		COLORS.pink,
+		Enum.Material.Neon,
+		0.05
+	)
+	wingTrim.CanCollide = false
+
+	local engine = makePart(
+		shuttle,
+		"Engine",
+		Vector3.new(5, 5, 9),
+		CFrame.new(side * 4, 0, 17),
+		COLORS.stone,
+		Enum.Material.Metal,
+		0,
+		Enum.PartType.Cylinder
+	)
+	engine.CFrame *= CFrame.Angles(math.rad(90), 0, 0)
+	engine.CanCollide = false
+	local flame = makePart(
+		shuttle,
+		"EngineFlame",
+		Vector3.new(3.5, 3.5, 10),
+		CFrame.new(side * 4, 0, 24),
+		COLORS.cyan,
+		Enum.Material.Neon,
+		0.12
+	)
+	flame.CanCollide = false
+	addLight(flame, COLORS.cyan, 2, 24)
+end
+
+local topFin = makePart(shuttle, "TopFin", Vector3.new(1.5, 10, 12), CFrame.new(0, 8, 8), COLORS.pink, Enum.Material.Metal)
+topFin.CanCollide = false
+local landingCFrame = CFrame.lookAt(padPosition + Vector3.new(0, 10, 0), Vector3.new(0, 10, 0))
+shuttle:PivotTo(landingCFrame)
+
+local supplyCrate = makePart(
+	shuttleArea,
+	"SupplyCrate",
+	Vector3.new(8, 6, 8),
+	CFrame.new(padPosition + Vector3.new(13, 4, 7)),
+	COLORS.gold,
+	Enum.Material.Metal
+)
+local supplyPrompt = Instance.new("ProximityPrompt")
+supplyPrompt.Name = "GetRaidWeapons"
+supplyPrompt.ActionText = "Prendi le armi"
+supplyPrompt.ObjectText = "Rifornimenti Nova Shuttle"
+supplyPrompt.HoldDuration = 0.4
+supplyPrompt.MaxActivationDistance = 12
+supplyPrompt.RequiresLineOfSight = false
+supplyPrompt.Parent = supplyCrate
+
+local function moveShuttle(startCFrame: CFrame, endCFrame: CFrame, duration: number)
+	local startedAt = os.clock()
+	while true do
+		local alpha = math.clamp((os.clock() - startedAt) / duration, 0, 1)
+		local eased = 1 - (1 - alpha) ^ 3
+		local arc = math.sin(alpha * math.pi) * 18
+		shuttle:PivotTo(startCFrame:Lerp(endCFrame, eased) * CFrame.new(0, arc, 0))
+		if alpha >= 1 then
+			break
+		end
+		task.wait()
+	end
+end
+
+local function landShuttle()
+	local startCFrame = landingCFrame * CFrame.new(0, 115, 140) * CFrame.Angles(math.rad(-18), 0, 0)
+	shuttle:PivotTo(startCFrame)
+	moveShuttle(startCFrame, landingCFrame, 6)
+	createRing(padPosition + Vector3.new(0, 1, 0), COLORS.cyan, 8, 48, 1.1)
+end
+
+local function launchShuttle()
+	local endCFrame = landingCFrame * CFrame.new(0, 130, -160) * CFrame.Angles(math.rad(24), 0, 0)
+	moveShuttle(shuttle:GetPivot(), endCFrame, 5)
+end
+
+-- Runtime weapon templates. They are fully server-authoritative.
+local oldWeapons = ServerStorage:FindFirstChild("BrainrotRaidWeapons")
+if oldWeapons then
+	oldWeapons:Destroy()
+end
+local weaponTemplates = Instance.new("Folder")
+weaponTemplates.Name = "BrainrotRaidWeapons"
+weaponTemplates.Parent = ServerStorage
+
+local function toolDecoration(handle: BasePart, name: string, size: Vector3, offset: CFrame, color: Color3, material: Enum.Material)
+	local decoration = Instance.new("Part")
+	decoration.Name = name
+	decoration.Size = size
+	decoration.CFrame = handle.CFrame * offset
+	decoration.Color = color
+	decoration.Material = material
+	decoration.CanCollide = false
+	decoration.Massless = true
+	decoration.Parent = handle.Parent
+	local weld = Instance.new("WeldConstraint")
+	weld.Part0 = handle
+	weld.Part1 = decoration
+	weld.Parent = decoration
+	return decoration
+end
+
+local function createWeapon(name: string, weaponType: string, color: Color3, damage: number, cooldown: number)
+	local tool = Instance.new("Tool")
+	tool.Name = name
+	tool.CanBeDropped = false
+	tool.RequiresHandle = true
+	tool:SetAttribute("WeaponType", weaponType)
+	tool:SetAttribute("Damage", damage)
+	tool:SetAttribute("Cooldown", cooldown)
+	tool.ToolTip = "Arma originale Brainrot Heroes"
+
+	local handle = Instance.new("Part")
+	handle.Name = "Handle"
+	handle.Size = if weaponType == "Hammer" then Vector3.new(2, 7, 2) else Vector3.new(2.2, 2.2, 6.5)
+	handle.Color = color
+	handle.Material = Enum.Material.Metal
+	handle.CanCollide = false
+	handle.Massless = true
+	handle.Parent = tool
+
+	if weaponType == "Hammer" then
+		toolDecoration(handle, "CometHead", Vector3.new(7.5, 4.5, 4.5), CFrame.new(0, 3.5, 0), COLORS.gold, Enum.Material.Neon)
+		tool.Grip = CFrame.new(0, -2.5, 0) * CFrame.Angles(0, 0, math.rad(15))
+	elseif weaponType == "Rocket" then
+		toolDecoration(handle, "RocketBarrel", Vector3.new(4.2, 4.2, 8), CFrame.new(0, 0, -1), COLORS.pink, Enum.Material.Metal)
+		toolDecoration(handle, "RocketGlow", Vector3.new(2.8, 2.8, 1), CFrame.new(0, 0, -5.2), COLORS.gold, Enum.Material.Neon)
+		tool.Grip = CFrame.new(0, 0, -2) * CFrame.Angles(0, math.rad(90), 0)
+	else
+		toolDecoration(handle, "BlasterCore", Vector3.new(3.4, 3.4, 3.4), CFrame.new(0, 0, -3), COLORS.cyan, Enum.Material.Neon)
+		toolDecoration(handle, "BlasterSight", Vector3.new(0.8, 1.8, 2.2), CFrame.new(0, 1.5, -1), COLORS.gold, Enum.Material.Neon)
+		tool.Grip = CFrame.new(0, 0, -2) * CFrame.Angles(0, math.rad(90), 0)
+	end
+
+	tool.Parent = weaponTemplates
+	return tool
+end
+
+createWeapon("Blaster Nebula", "Blaster", COLORS.cyan, 330, 0.7)
+createWeapon("Martello Cometa", "Hammer", COLORS.purple, 520, 1.4)
+createWeapon("Lanciarazzi Shuttle", "Rocket", COLORS.pink, 850, 3.2)
+
+local participants: { [Player]: number } = {}
+local weaponCooldowns: { [Tool]: number } = {}
+
+local function updateBossName()
+	local health = boss:GetAttribute("Health") :: number
+	local maxHealth = boss:GetAttribute("MaxHealth") :: number
+	local percent = math.max(0, math.ceil((health / maxHealth) * 100))
+	bossName.Text = string.format("PRISMA REX • %d%%", percent)
+end
+
+local function damageBoss(player: Player, amount: number, sourceName: string)
+	if arena:GetAttribute("RaidState") ~= "ACTIVE" or boss:GetAttribute("Defeated") then
+		powerRemote:FireClient(player, false, "Attendi l'inizio del raid!")
+		return false
+	end
+	local oldHealth = boss:GetAttribute("Health") :: number
+	local newHealth = math.max(0, oldHealth - amount)
+	boss:SetAttribute("Health", newHealth)
+	updateBossName()
+	bossDamaged:Fire(player, amount, sourceName)
+	powerRemote:FireClient(player, true, string.format("%s  -%d", sourceName, amount))
+	if newHealth <= 0 then
+		boss:SetAttribute("Defeated", true)
+	end
+	return true
+end
+
+local function bindWeapon(tool: Tool, player: Player)
+	tool.Activated:Connect(function()
+		local now = os.clock()
+		local readyAt = weaponCooldowns[tool] or 0
+		if now < readyAt then
+			return
+		end
+		weaponCooldowns[tool] = now + (tool:GetAttribute("Cooldown") :: number)
+
+		local character = player.Character
+		local root = if character then character:FindFirstChild("HumanoidRootPart") else nil
+		local handle = tool:FindFirstChild("Handle")
+		local target = boss.PrimaryPart
+		if not root or not root:IsA("BasePart") or not handle or not handle:IsA("BasePart") or not target then
+			return
+		end
+
+		local weaponType = tool:GetAttribute("WeaponType") :: string
+		local damage = tool:GetAttribute("Damage") :: number
+		local distance = (target.Position - root.Position).Magnitude
+		if weaponType == "Hammer" then
+			if distance > 28 then
+				powerRemote:FireClient(player, false, "Avvicinati al boss per usare il martello!")
+				return
+			end
+			createRing(root.Position - Vector3.new(0, 2.5, 0), COLORS.gold, 4, 35, 0.45)
+			damageBoss(player, damage, "MARTELLO")
+		elseif weaponType == "Rocket" then
+			if distance > 150 then
+				return
+			end
+			local rocket = makePart(effects, "ShuttleRocket", Vector3.new(2.8, 2.8, 7), CFrame.lookAt(handle.Position, bossCore.Position), COLORS.pink, Enum.Material.Neon, 0.04)
+			rocket.CanCollide = false
+			local flight = TweenService:Create(rocket, TweenInfo.new(0.55, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { CFrame = CFrame.new(bossCore.Position), Size = Vector3.new(5, 5, 5) })
+			flight:Play()
+			flight.Completed:Once(function()
+				if rocket.Parent then rocket:Destroy() end
+				createRing(bossCore.Position, COLORS.pink, 5, 42, 0.65)
+				damageBoss(player, damage, "RAZZO")
+			end)
+		else
+			if distance > 135 then
+				return
+			end
+			local direction = (target.Position - root.Position).Unit
+			if root.CFrame.LookVector:Dot(direction) < 0.15 then
+				powerRemote:FireClient(player, false, "Mira verso Prisma Rex!")
+				return
+			end
+			createBeam(handle.Position, bossCore.Position, COLORS.cyan, 1.2, 0.25)
+			damageBoss(player, damage, "BLASTER")
+		end
+	end)
+end
+
+local function giveWeapons(player: Player)
+	local backpack = player:FindFirstChildWhichIsA("Backpack")
+	if not backpack then
+		return
+	end
+	for _, template in weaponTemplates:GetChildren() do
+		if template:IsA("Tool") and not backpack:FindFirstChild(template.Name) and not (player.Character and player.Character:FindFirstChild(template.Name)) then
+			local clone = template:Clone()
+			clone.Parent = backpack
+			bindWeapon(clone, player)
+		end
+	end
+end
+
+supplyPrompt.Triggered:Connect(giveWeapons)
+
+local function setupPlayer(player: Player)
+	local leaderstats = player:FindFirstChild("leaderstats")
+	if not leaderstats then
+		leaderstats = Instance.new("Folder")
+		leaderstats.Name = "leaderstats"
+		leaderstats.Parent = player
+	end
+	if not leaderstats:FindFirstChild("Fragments") then
+		local fragments = Instance.new("IntValue")
+		fragments.Name = "Fragments"
+		fragments.Parent = leaderstats
+	end
+	if not leaderstats:FindFirstChild("HeroWins") then
+		local wins = Instance.new("IntValue")
+		wins.Name = "HeroWins"
+		wins.Parent = leaderstats
+	end
+	player.CharacterAdded:Connect(function()
+		task.wait(0.8)
+		giveWeapons(player)
+	end)
+	if player.Character then
+		task.defer(giveWeapons, player)
+	end
+end
+
+Players.PlayerAdded:Connect(setupPlayer)
+for _, player in Players:GetPlayers() do
+	setupPlayer(player)
+end
+
+bossDamaged.Event:Connect(function(player: Player, amount: number)
+	participants[player] = (participants[player] or 0) + amount
+end)
+
+local function bossShockwave()
+	setDisplay("ATTACCO DEL BOSS", "SALTA SOPRA L'ONDA!", COLORS.pink)
+	createRing(Vector3.new(0, 6.1, 0), COLORS.pink, 10, 175, 1.45)
+	task.wait(1.05)
+	for _, player in Players:GetPlayers() do
+		local character = player.Character
+		local root = if character then character:FindFirstChild("HumanoidRootPart") else nil
+		local humanoid = if character then character:FindFirstChildWhichIsA("Humanoid") else nil
+		if root and root:IsA("BasePart") and humanoid and (root.Position - Vector3.new(0, root.Position.Y, 0)).Magnitude < 88 and root.Position.Y < 9 then
+			humanoid:TakeDamage(18)
+		end
+	end
+end
+
+local function chooseWinner(): Player?
+	local candidates = {}
+	for player, damage in participants do
+		if player.Parent == Players and damage > 0 then
+			table.insert(candidates, player)
+		end
+	end
+	if #candidates == 0 then
+		candidates = Players:GetPlayers()
+	end
+	if #candidates == 0 then
+		return nil
+	end
+	return candidates[math.random(1, #candidates)]
+end
+
+local function awardRaid()
+	local winner = chooseWinner()
+	for _, player in Players:GetPlayers() do
+		local leaderstats = player:FindFirstChild("leaderstats")
+		local fragments = if leaderstats then leaderstats:FindFirstChild("Fragments") else nil
+		if fragments and fragments:IsA("IntValue") then
+			fragments.Value += if player == winner then 5 else 12
+		end
+		if player == winner and leaderstats then
+			local wins = leaderstats:FindFirstChild("HeroWins")
+			if wins and wins:IsA("IntValue") then
+				wins.Value += 1
+			end
+		end
+	end
+	if winner then
+		setDisplay("HERO ASSEGNATO!", string.upper(winner.DisplayName) .. " VINCE PRISMA REX • FRAMMENTI AGLI ALTRI", COLORS.gold)
+	else
+		setDisplay("RAID COMPLETATO", "NESSUN PARTECIPANTE VALIDO", COLORS.gold)
+	end
+end
+
+local function resetRaid()
+	participants = {}
+	-- The raid remains playable alone, but Prisma Rex becomes a true group boss
+	-- when a large server joins.
+	local scaledMaxHealth = math.max(BOSS_MAX_HEALTH, #Players:GetPlayers() * 6000)
+	boss:SetAttribute("MaxHealth", scaledMaxHealth)
+	boss:SetAttribute("Health", scaledMaxHealth)
+	boss:SetAttribute("Defeated", false)
+	bossShield.Transparency = 0.88
+	bossCore.Color = COLORS.cyan
+	updateBossName()
+end
+
+task.spawn(function()
+	while arena.Parent do
+		resetRaid()
+		arena:SetAttribute("RaidState", "COUNTDOWN")
+		task.spawn(landShuttle)
+		for remaining = COUNTDOWN_SECONDS, 0, -1 do
+			arena:SetAttribute("Countdown", remaining)
+			setDisplay("MEGA RAID", string.format("SHUTTLE IN ARRIVO • %02d:%02d", math.floor(remaining / 60), remaining % 60), COLORS.cyan)
+			task.wait(1)
+		end
+
+		arena:SetAttribute("RaidState", "ACTIVE")
+		bossShield.Transparency = 1
+		setDisplay("RAID ATTIVO", "USA ARMI E POTERI CONTRO PRISMA REX!", COLORS.pink)
+		local nextAttackAt = os.clock() + 7
+		local defeated = false
+		for remaining = RAID_SECONDS, 0, -1 do
+			arena:SetAttribute("RaidTime", remaining)
+			if boss:GetAttribute("Defeated") or (boss:GetAttribute("Health") :: number) <= 0 then
+				defeated = true
+				break
+			end
+			if os.clock() >= nextAttackAt then
+				nextAttackAt = os.clock() + 9
+				task.spawn(bossShockwave)
+			else
+				local health = boss:GetAttribute("Health") :: number
+				local maxHealth = boss:GetAttribute("MaxHealth") :: number
+				setDisplay("RAID ATTIVO", string.format("PRISMA REX %d%% • TEMPO %02d:%02d", math.ceil(health / maxHealth * 100), math.floor(remaining / 60), remaining % 60), COLORS.pink)
+			end
+			task.wait(1)
+		end
+
+		arena:SetAttribute("RaidState", "REWARD")
+		bossShield.Transparency = 0.88
+		if defeated then
+			awardRaid()
+		else
+			setDisplay("PRISMA REX RESISTE", "POTENZIA LE ARMI E RIPROVA AL PROSSIMO RAID", COLORS.pink)
+		end
+		task.spawn(launchShuttle)
+		task.wait(REWARD_SECONDS)
+	end
+end)
+
+print("Brainrot Heroes gameplay, weapons, and Nova Shuttle ready")
+]]></string>
+      </Properties>
+    </Item>
+  </Item>
+  <Item class="StarterPlayer" referent="4">
+    <Properties>
+      <string name="Name">StarterPlayer</string>
+    </Properties>
+    <Item class="StarterPlayerScripts" referent="5">
+      <Properties>
+        <string name="Name">StarterPlayerScripts</string>
+      </Properties>
+      <Item class="LocalScript" referent="6">
+        <Properties>
+          <string name="Name">ArenaPresentation</string>
+          <string name="Source"><![CDATA[--!strict
+
+local Players = game:GetService("Players")
+local ProximityPromptService = game:GetService("ProximityPromptService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+local arena = workspace:WaitForChild("BrainrotHeroesRaidArena")
+local remotes = ReplicatedStorage:WaitForChild("BrainrotHeroesRemotes")
+local useHeroPower = remotes:WaitForChild("UseHeroPower") :: RemoteEvent
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "BrainrotHeroesArenaHUD"
+screenGui.ResetOnSpawn = false
+screenGui.IgnoreGuiInset = true
+screenGui.DisplayOrder = 10
+screenGui.Parent = playerGui
+
+local status = Instance.new("Frame")
+status.Name = "RaidStatus"
+status.AnchorPoint = Vector2.new(0.5, 0)
+status.Position = UDim2.fromScale(0.5, 0.025)
+status.Size = UDim2.fromOffset(440, 64)
+status.BackgroundColor3 = Color3.fromRGB(8, 9, 24)
+status.BackgroundTransparency = 0.16
+status.BorderSizePixel = 0
+status.Parent = screenGui
+
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 20)
+corner.Parent = status
+
+local stroke = Instance.new("UIStroke")
+stroke.Color = Color3.fromRGB(45, 235, 255)
+stroke.Thickness = 2
+stroke.Transparency = 0.18
+stroke.Parent = status
+
+local gradient = Instance.new("UIGradient")
+gradient.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(45, 235, 255)),
+	ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 204, 76)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(170, 67, 255)),
+})
+gradient.Parent = stroke
+
+local title = Instance.new("TextLabel")
+title.BackgroundTransparency = 1
+title.Position = UDim2.fromScale(0.04, 0.09)
+title.Size = UDim2.fromScale(0.92, 0.44)
+title.Font = Enum.Font.GothamBlack
+title.Text = "BRAINROT HEROES • RAID HUB"
+title.TextColor3 = Color3.fromRGB(244, 249, 255)
+title.TextScaled = true
+title.Parent = status
+
+local subtitle = Instance.new("TextLabel")
+subtitle.BackgroundTransparency = 1
+subtitle.Position = UDim2.fromScale(0.04, 0.57)
+subtitle.Size = UDim2.fromScale(0.92, 0.23)
+subtitle.Font = Enum.Font.GothamBold
+subtitle.Text = "Esplora, potenzia i tuoi Heroes e preparati all'evento"
+subtitle.TextColor3 = Color3.fromRGB(255, 204, 76)
+subtitle.TextScaled = true
+subtitle.Parent = status
+
+local function formatTime(seconds: number): string
+	return string.format("%02d:%02d", math.floor(seconds / 60), seconds % 60)
+end
+
+local function refreshRaidStatus()
+	local state = arena:GetAttribute("RaidState") or "COUNTDOWN"
+	if state == "ACTIVE" then
+		title.Text = "PRISMA REX • RAID ATTIVO"
+		subtitle.Text = string.format("TEMPO %s  •  USA ARMI E POTERI", formatTime(arena:GetAttribute("RaidTime") or 0))
+		subtitle.TextColor3 = Color3.fromRGB(255, 68, 184)
+	elseif state == "REWARD" then
+		title.Text = "RICOMPENSE DEL RAID"
+		subtitle.Text = "1 HERO COMPLETO • FRAMMENTI PER GLI ALTRI"
+		subtitle.TextColor3 = Color3.fromRGB(105, 255, 145)
+	else
+		title.Text = "NOVA SHUTTLE IN ARRIVO"
+		subtitle.Text = string.format("MEGA RAID TRA %s  •  RITIRA LE ARMI", formatTime(arena:GetAttribute("Countdown") or 0))
+		subtitle.TextColor3 = Color3.fromRGB(255, 204, 76)
+	end
+end
+
+for _, attribute in { "RaidState", "Countdown", "RaidTime" } do
+	arena:GetAttributeChangedSignal(attribute):Connect(refreshRaidStatus)
+end
+refreshRaidStatus()
+
+TweenService:Create(status, TweenInfo.new(0.7, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+	Position = UDim2.fromScale(0.5, 0.018),
+}):Play()
+
+task.spawn(function()
+	while screenGui.Parent do
+		TweenService:Create(gradient, TweenInfo.new(4, Enum.EasingStyle.Linear), { Rotation = gradient.Rotation + 180 }):Play()
+		task.wait(4)
+	end
+end)
+
+local heroCard = Instance.new("Frame")
+heroCard.Name = "HeroCard"
+heroCard.AnchorPoint = Vector2.new(0.5, 0.5)
+heroCard.Position = UDim2.fromScale(0.5, 0.53)
+heroCard.Size = UDim2.fromOffset(470, 330)
+heroCard.BackgroundColor3 = Color3.fromRGB(12, 14, 34)
+heroCard.BackgroundTransparency = 0.06
+heroCard.BorderSizePixel = 0
+heroCard.Visible = false
+heroCard.Parent = screenGui
+
+local heroCardCorner = Instance.new("UICorner")
+heroCardCorner.CornerRadius = UDim.new(0, 26)
+heroCardCorner.Parent = heroCard
+
+local heroCardStroke = Instance.new("UIStroke")
+heroCardStroke.Name = "AccentStroke"
+heroCardStroke.Color = Color3.fromRGB(170, 67, 255)
+heroCardStroke.Thickness = 4
+heroCardStroke.Transparency = 0.08
+heroCardStroke.Parent = heroCard
+
+local cardGradient = Instance.new("UIGradient")
+cardGradient.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(22, 25, 59)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(38, 17, 67)),
+})
+cardGradient.Rotation = 25
+cardGradient.Parent = heroCard
+
+local cardIcon = Instance.new("TextLabel")
+cardIcon.BackgroundTransparency = 1
+cardIcon.Position = UDim2.fromOffset(24, 25)
+cardIcon.Size = UDim2.fromOffset(82, 82)
+cardIcon.Font = Enum.Font.GothamBlack
+cardIcon.Text = "★"
+cardIcon.TextColor3 = Color3.fromRGB(255, 204, 76)
+cardIcon.TextScaled = true
+cardIcon.Parent = heroCard
+
+local cardTitle = Instance.new("TextLabel")
+cardTitle.Name = "HeroName"
+cardTitle.BackgroundTransparency = 1
+cardTitle.Position = UDim2.fromOffset(118, 28)
+cardTitle.Size = UDim2.fromOffset(300, 48)
+cardTitle.Font = Enum.Font.GothamBlack
+cardTitle.Text = "HERO"
+cardTitle.TextColor3 = Color3.fromRGB(244, 249, 255)
+cardTitle.TextScaled = true
+cardTitle.TextXAlignment = Enum.TextXAlignment.Left
+cardTitle.Parent = heroCard
+
+local rarityLabel = Instance.new("TextLabel")
+rarityLabel.Name = "Rarity"
+rarityLabel.BackgroundTransparency = 1
+rarityLabel.Position = UDim2.fromOffset(120, 79)
+rarityLabel.Size = UDim2.fromOffset(240, 28)
+rarityLabel.Font = Enum.Font.GothamBold
+rarityLabel.Text = "RARITÀ"
+rarityLabel.TextColor3 = Color3.fromRGB(255, 204, 76)
+rarityLabel.TextSize = 22
+rarityLabel.TextXAlignment = Enum.TextXAlignment.Left
+rarityLabel.Parent = heroCard
+
+local divider = Instance.new("Frame")
+divider.BackgroundColor3 = Color3.fromRGB(45, 235, 255)
+divider.BackgroundTransparency = 0.15
+divider.BorderSizePixel = 0
+divider.Position = UDim2.fromOffset(25, 120)
+divider.Size = UDim2.new(1, -50, 0, 3)
+divider.Parent = heroCard
+
+local powerLabel = Instance.new("TextLabel")
+powerLabel.Name = "Power"
+powerLabel.BackgroundTransparency = 1
+powerLabel.Position = UDim2.fromOffset(28, 138)
+powerLabel.Size = UDim2.new(1, -56, 0, 38)
+powerLabel.Font = Enum.Font.GothamBlack
+powerLabel.Text = "POTERE:"
+powerLabel.TextColor3 = Color3.fromRGB(45, 235, 255)
+powerLabel.TextSize = 24
+powerLabel.TextXAlignment = Enum.TextXAlignment.Left
+powerLabel.Parent = heroCard
+
+local descriptionLabel = Instance.new("TextLabel")
+descriptionLabel.Name = "Description"
+descriptionLabel.BackgroundTransparency = 1
+descriptionLabel.Position = UDim2.fromOffset(28, 180)
+descriptionLabel.Size = UDim2.new(1, -56, 0, 64)
+descriptionLabel.Font = Enum.Font.GothamMedium
+descriptionLabel.Text = "Descrizione dell'Hero"
+descriptionLabel.TextColor3 = Color3.fromRGB(224, 232, 250)
+descriptionLabel.TextSize = 19
+descriptionLabel.TextWrapped = true
+descriptionLabel.TextXAlignment = Enum.TextXAlignment.Left
+descriptionLabel.TextYAlignment = Enum.TextYAlignment.Top
+descriptionLabel.Parent = heroCard
+
+local usePowerButton = Instance.new("TextButton")
+usePowerButton.Name = "UsePower"
+usePowerButton.AnchorPoint = Vector2.new(0.5, 1)
+usePowerButton.Position = UDim2.new(0.5, 0, 1, -20)
+usePowerButton.Size = UDim2.fromOffset(250, 48)
+usePowerButton.BackgroundColor3 = Color3.fromRGB(45, 235, 255)
+usePowerButton.BorderSizePixel = 0
+usePowerButton.Font = Enum.Font.GothamBlack
+usePowerButton.Text = "USA POTERE"
+usePowerButton.TextColor3 = Color3.fromRGB(8, 9, 24)
+usePowerButton.TextSize = 22
+usePowerButton.Parent = heroCard
+
+local usePowerCorner = Instance.new("UICorner")
+usePowerCorner.CornerRadius = UDim.new(0, 15)
+usePowerCorner.Parent = usePowerButton
+
+local closeButton = Instance.new("TextButton")
+closeButton.Name = "Close"
+closeButton.AnchorPoint = Vector2.new(1, 0)
+closeButton.Position = UDim2.new(1, -16, 0, 14)
+closeButton.Size = UDim2.fromOffset(42, 42)
+closeButton.BackgroundColor3 = Color3.fromRGB(255, 75, 150)
+closeButton.BackgroundTransparency = 0.12
+closeButton.BorderSizePixel = 0
+closeButton.Font = Enum.Font.GothamBlack
+closeButton.Text = "×"
+closeButton.TextColor3 = Color3.new(1, 1, 1)
+closeButton.TextSize = 30
+closeButton.Parent = heroCard
+
+local closeCorner = Instance.new("UICorner")
+closeCorner.CornerRadius = UDim.new(1, 0)
+closeCorner.Parent = closeButton
+
+local cardScale = Instance.new("UIScale")
+cardScale.Scale = 1
+cardScale.Parent = heroCard
+
+local selectedSlot: number? = nil
+
+local function hideHeroCard()
+	if not heroCard.Visible then
+		return
+	end
+	local tween = TweenService:Create(cardScale, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Scale = 0.82 })
+	tween:Play()
+	tween.Completed:Wait()
+	heroCard.Visible = false
+end
+
+local function showHeroCard(prompt: ProximityPrompt)
+	local accent = if prompt:GetAttribute("Accent") == "Cyan"
+		then Color3.fromRGB(45, 235, 255)
+		else Color3.fromRGB(170, 67, 255)
+	cardTitle.Text = tostring(prompt:GetAttribute("HeroName") or "Hero sconosciuto")
+	rarityLabel.Text = "RARITÀ • " .. tostring(prompt:GetAttribute("Rarity") or "?")
+	powerLabel.Text = "POTERE • " .. tostring(prompt:GetAttribute("Power") or "Segreto")
+	descriptionLabel.Text = tostring(prompt:GetAttribute("Description") or "Questo Hero è ancora avvolto nel mistero.")
+	selectedSlot = prompt:GetAttribute("SlotIndex") :: number?
+	heroCardStroke.Color = accent
+	divider.BackgroundColor3 = accent
+	powerLabel.TextColor3 = accent
+	usePowerButton.BackgroundColor3 = accent
+	usePowerButton.Text = "USA POTERE"
+	cardScale.Scale = 0.72
+	heroCard.Visible = true
+	TweenService:Create(cardScale, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+end
+
+closeButton.Activated:Connect(hideHeroCard)
+
+usePowerButton.Activated:Connect(function()
+	if selectedSlot then
+		useHeroPower:FireServer(selectedSlot)
+		usePowerButton.Text = "ATTIVAZIONE..."
+	end
+end)
+
+useHeroPower.OnClientEvent:Connect(function(success: boolean, message: string)
+	usePowerButton.Text = message
+	usePowerButton.BackgroundColor3 = if success then Color3.fromRGB(115, 255, 145) else Color3.fromRGB(255, 105, 130)
+	task.delay(2.4, function()
+		if heroCard.Visible then
+			usePowerButton.Text = "USA POTERE"
+			usePowerButton.BackgroundColor3 = heroCardStroke.Color
+		end
+	end)
+end)
+
+ProximityPromptService.PromptTriggered:Connect(function(prompt: ProximityPrompt, triggeringPlayer: Player)
+	if prompt.Name == "InspectHero" and (triggeringPlayer == nil or triggeringPlayer == player) then
+		showHeroCard(prompt)
+	end
+end)
+]]></string>
+        </Properties>
+      </Item>
+    </Item>
+  </Item>
+  <Item class="Workspace" referent="7">
+    <Properties>
+      <string name="Name">Workspace</string>
+      <float name="Gravity">196.2</float>
+      <bool name="NeedsPivotMigration">false</bool>
+      <bool name="StreamingEnabled">true</bool>
+    </Properties>
+  </Item>
+</roblox>

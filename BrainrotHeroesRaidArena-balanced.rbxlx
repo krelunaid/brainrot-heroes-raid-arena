@@ -1,0 +1,697 @@
+<roblox version="4">
+  <Item class="Lighting" referent="0">
+    <Properties>
+      <string name="Name">Lighting</string>
+      <float name="Brightness">3</float>
+      <float name="ClockTime">22.4</float>
+      <float name="EnvironmentDiffuseScale">0.35</float>
+      <float name="EnvironmentSpecularScale">0.65</float>
+      <bool name="GlobalShadows">true</bool>
+      <token name="Technology">4</token>
+    </Properties>
+  </Item>
+  <Item class="ServerScriptService" referent="1">
+    <Properties>
+      <string name="Name">ServerScriptService</string>
+    </Properties>
+    <Item class="Script" referent="2">
+      <Properties>
+        <string name="Name">ArenaBuilder</string>
+        <token name="RunContext">0</token>
+        <string name="Source"><![CDATA[--!strict
+
+-- Brainrot Heroes Raid Arena
+-- Builds a reusable, original raid room without external or copyrighted assets.
+
+local Lighting = game:GetService("Lighting")
+local TweenService = game:GetService("TweenService")
+
+local ARENA_NAME = "BrainrotHeroesRaidArena"
+local ORIGIN = Vector3.new(0, 0, 0)
+local ARENA_RADIUS = 112
+
+local COLORS = {
+	void = Color3.fromRGB(18, 21, 48),
+	stone = Color3.fromRGB(52, 58, 93),
+	stoneLight = Color3.fromRGB(80, 87, 128),
+	cyan = Color3.fromRGB(45, 235, 255),
+	purple = Color3.fromRGB(170, 67, 255),
+	pink = Color3.fromRGB(255, 68, 184),
+	gold = Color3.fromRGB(255, 204, 76),
+	white = Color3.fromRGB(239, 249, 255),
+}
+
+if workspace:FindFirstChild(ARENA_NAME) then
+	workspace[ARENA_NAME]:Destroy()
+end
+
+local arena = Instance.new("Model")
+arena.Name = ARENA_NAME
+arena:SetAttribute("ReadyForRaidLogic", true)
+arena:SetAttribute("RecommendedMaxRaiders", 50)
+arena.Parent = workspace
+
+local geometry = Instance.new("Folder")
+geometry.Name = "Architecture"
+geometry.Parent = arena
+
+local effects = Instance.new("Folder")
+effects.Name = "Effects"
+effects.Parent = arena
+
+local gameplay = Instance.new("Folder")
+gameplay.Name = "GameplayMarkers"
+gameplay.Parent = arena
+
+local function part(
+	parent: Instance,
+	name: string,
+	size: Vector3,
+	cframe: CFrame,
+	color: Color3,
+	material: Enum.Material,
+	transparency: number?,
+	shape: Enum.PartType?
+): Part
+	local object = Instance.new("Part")
+	object.Name = name
+	object.Anchored = true
+	object.Size = size
+	object.CFrame = cframe
+	object.Color = color
+	object.Material = material
+	object.Transparency = transparency or 0
+	object.TopSurface = Enum.SurfaceType.Smooth
+	object.BottomSurface = Enum.SurfaceType.Smooth
+	object.CastShadow = material ~= Enum.Material.Neon
+	if shape then
+		object.Shape = shape
+	end
+	object.Parent = parent
+	return object
+end
+
+local function cylinder(
+	parent: Instance,
+	name: string,
+	diameter: number,
+	height: number,
+	y: number,
+	color: Color3,
+	material: Enum.Material,
+	transparency: number?
+): Part
+	return part(
+		parent,
+		name,
+		Vector3.new(height, diameter, diameter),
+		CFrame.new(ORIGIN + Vector3.new(0, y, 0)) * CFrame.Angles(0, 0, math.rad(90)),
+		color,
+		material,
+		transparency,
+		Enum.PartType.Cylinder
+	)
+end
+
+local function ring(
+	parent: Instance,
+	name: string,
+	radius: number,
+	width: number,
+	height: number,
+	y: number,
+	color: Color3,
+	material: Enum.Material,
+	segments: number,
+	transparency: number?
+)
+	local folder = Instance.new("Folder")
+	folder.Name = name
+	folder.Parent = parent
+	local segmentLength = (2 * math.pi * radius / segments) * 1.04
+	for index = 1, segments do
+		local angle = ((index - 1) / segments) * math.pi * 2
+		local position = ORIGIN + Vector3.new(math.cos(angle) * radius, y, math.sin(angle) * radius)
+		part(
+			folder,
+			string.format("Segment%02d", index),
+			Vector3.new(segmentLength, height, width),
+			CFrame.new(position) * CFrame.Angles(0, -angle, 0),
+			color,
+			material,
+			transparency
+		)
+	end
+	return folder
+end
+
+local function addPointLight(parent: Instance, color: Color3, brightness: number, range: number)
+	local light = Instance.new("PointLight")
+	light.Color = color
+	light.Brightness = brightness
+	light.Range = range
+	light.Shadows = false
+	light.Parent = parent
+	return light
+end
+
+local function addBillboard(parent: BasePart, title: string, subtitle: string, color: Color3)
+	local isHeroLabel = string.sub(title, 1, 4) == "HERO"
+	local gui = Instance.new("BillboardGui")
+	gui.Name = "HologramLabel"
+	gui.Size = if isHeroLabel then UDim2.fromOffset(230, 62) else UDim2.fromOffset(390, 104)
+	gui.StudsOffsetWorldSpace = if isHeroLabel then Vector3.new(0, 4.5, 0) else Vector3.new(0, 4.2, 0)
+	gui.AlwaysOnTop = false
+	gui.MaxDistance = if isHeroLabel then 52 else 145
+	gui.LightInfluence = 0.1
+	gui.Parent = parent
+
+	local frame = Instance.new("Frame")
+	frame.BackgroundColor3 = COLORS.void
+	frame.BackgroundTransparency = if isHeroLabel then 0.32 else 0.22
+	frame.BorderSizePixel = 0
+	frame.Size = UDim2.fromScale(1, 1)
+	frame.Parent = gui
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 22)
+	corner.Parent = frame
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = color
+	stroke.Thickness = if isHeroLabel then 2 else 3
+	stroke.Transparency = 0.22
+	stroke.Parent = frame
+
+	local gradient = Instance.new("UIGradient")
+	gradient.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, color),
+		ColorSequenceKeypoint.new(0.5, COLORS.white),
+		ColorSequenceKeypoint.new(1, COLORS.purple),
+	})
+	gradient.Rotation = 10
+	gradient.Parent = stroke
+
+	local titleLabel = Instance.new("TextLabel")
+	titleLabel.Name = "Title"
+	titleLabel.BackgroundTransparency = 1
+	titleLabel.Position = UDim2.fromScale(0.04, 0.08)
+	titleLabel.Size = UDim2.fromScale(0.92, if isHeroLabel then 0.42 else 0.48)
+	titleLabel.Font = Enum.Font.GothamBlack
+	titleLabel.Text = title
+	titleLabel.TextColor3 = COLORS.white
+	titleLabel.TextScaled = true
+	titleLabel.Parent = frame
+
+	local subtitleLabel = Instance.new("TextLabel")
+	subtitleLabel.Name = "Subtitle"
+	subtitleLabel.BackgroundTransparency = 1
+	subtitleLabel.Position = UDim2.fromScale(0.04, if isHeroLabel then 0.54 else 0.57)
+	subtitleLabel.Size = UDim2.fromScale(0.92, if isHeroLabel then 0.24 else 0.28)
+	subtitleLabel.Font = Enum.Font.GothamBold
+	subtitleLabel.Text = subtitle
+	subtitleLabel.TextColor3 = color
+	subtitleLabel.TextScaled = true
+	subtitleLabel.Parent = frame
+
+	return subtitleLabel
+end
+
+local function createHeroAltar(index: number, angle: number)
+	local radius = 76
+	local position = ORIGIN + Vector3.new(math.cos(angle) * radius, 4.2, math.sin(angle) * radius)
+	local altar = Instance.new("Model")
+	altar.Name = string.format("HeroAltar%02d", index)
+	altar:SetAttribute("HeroSlot", index)
+	altar:SetAttribute("Occupied", false)
+	altar.Parent = geometry
+
+	local base = part(
+		altar,
+		"Base",
+		Vector3.new(2.5, 15, 15),
+		CFrame.new(position) * CFrame.Angles(0, 0, math.rad(90)),
+		COLORS.stoneLight,
+		Enum.Material.Slate,
+		0,
+		Enum.PartType.Cylinder
+	)
+	local accentColor = if index % 2 == 0 then COLORS.cyan else COLORS.purple
+	local glow = part(
+		altar,
+		"HeroGlow",
+		Vector3.new(0.45, 11.5, 11.5),
+		base.CFrame + Vector3.new(0, 1.5, 0),
+		accentColor,
+		Enum.Material.Neon,
+		0.08,
+		Enum.PartType.Cylinder
+	)
+	glow.CanCollide = false
+	addPointLight(glow, accentColor, 1.5, 18)
+
+	local crystal = part(
+		altar,
+		"HeroCrystal",
+		Vector3.new(3.8, 9, 3.8),
+		CFrame.new(position + Vector3.new(0, 7.5, 0)) * CFrame.Angles(0, angle, math.rad(45)),
+		accentColor,
+		Enum.Material.Glass,
+		0.18
+	)
+	crystal.CanCollide = false
+	local inspectPrompt = Instance.new("ProximityPrompt")
+	inspectPrompt.Name = "InspectHero"
+	inspectPrompt.ActionText = "Scopri Hero"
+	inspectPrompt.ObjectText = string.format("Hero %02d • Pronto per il raid", index)
+	inspectPrompt.KeyboardKeyCode = Enum.KeyCode.E
+	inspectPrompt.HoldDuration = 0.15
+	inspectPrompt.MaxActivationDistance = 11
+	inspectPrompt.RequiresLineOfSight = false
+	inspectPrompt.Parent = crystal
+
+	local marker = part(
+		gameplay,
+		string.format("HeroSlot%02d", index),
+		Vector3.new(8, 0.4, 8),
+		CFrame.new(position + Vector3.new(0, 2.8, 0)),
+		accentColor,
+		Enum.Material.Neon,
+		0.88
+	)
+	marker.CanCollide = false
+	marker:SetAttribute("SlotIndex", index)
+
+	return glow, crystal
+end
+
+local function createPillar(index: number, angle: number)
+	local radius = 101
+	local position = ORIGIN + Vector3.new(math.cos(angle) * radius, 18, math.sin(angle) * radius)
+	local pillar = Instance.new("Model")
+	pillar.Name = string.format("Pillar%02d", index)
+	pillar.Parent = geometry
+
+	part(pillar, "Column", Vector3.new(7, 36, 7), CFrame.new(position), COLORS.stone, Enum.Material.Slate)
+	part(
+		pillar,
+		"LightChannel",
+		Vector3.new(7.35, 18, 0.35),
+		CFrame.new(position) * CFrame.Angles(0, -angle, 0),
+		if index % 2 == 0 then COLORS.cyan else COLORS.purple,
+		Enum.Material.Neon,
+		0.08
+	).CanCollide = false
+	part(
+		pillar,
+		"Crown",
+		Vector3.new(9, 3, 9),
+		CFrame.new(position + Vector3.new(0, 19, 0)),
+		COLORS.stoneLight,
+		Enum.Material.Metal
+	)
+end
+
+local function createPortal()
+	local portalModel = Instance.new("Model")
+	portalModel.Name = "BossPortal"
+	portalModel.Parent = geometry
+
+	local portalCenter = ORIGIN + Vector3.new(0, 25, -95)
+	part(
+		portalModel,
+		"LeftTower",
+		Vector3.new(12, 52, 15),
+		CFrame.new(portalCenter + Vector3.new(-22, 0, 0)),
+		COLORS.stone,
+		Enum.Material.Slate
+	)
+	part(
+		portalModel,
+		"RightTower",
+		Vector3.new(12, 52, 15),
+		CFrame.new(portalCenter + Vector3.new(22, 0, 0)),
+		COLORS.stone,
+		Enum.Material.Slate
+	)
+	part(
+		portalModel,
+		"Crown",
+		Vector3.new(56, 9, 18),
+		CFrame.new(portalCenter + Vector3.new(0, 29, 0)),
+		COLORS.stoneLight,
+		Enum.Material.Metal
+	)
+
+	local portal = part(
+		portalModel,
+		"Rift",
+		Vector3.new(2.2, 42, 42),
+		CFrame.new(portalCenter) * CFrame.Angles(0, math.rad(90), 0),
+		COLORS.purple,
+		Enum.Material.Neon,
+		0.28,
+		Enum.PartType.Cylinder
+	)
+	portal.CanCollide = false
+	addPointLight(portal, COLORS.purple, 5, 70)
+
+	local inner = part(
+		portalModel,
+		"RiftCore",
+		Vector3.new(2.5, 31, 31),
+		portal.CFrame + Vector3.new(0, 0, 0.4),
+		COLORS.void,
+		Enum.Material.Glass,
+		0.08,
+		Enum.PartType.Cylinder
+	)
+	inner.CanCollide = false
+
+	for index = 1, 12 do
+		local angle = (index / 12) * math.pi * 2
+		local shardPosition = portalCenter
+			+ Vector3.new(math.cos(angle) * 26, math.sin(angle) * 26, -1.5)
+		local shard = part(
+			portalModel,
+			string.format("Rune%02d", index),
+			Vector3.new(2.2, 5.5, 2.2),
+			CFrame.new(shardPosition) * CFrame.Angles(angle, 0, math.rad(45)),
+			if index % 2 == 0 then COLORS.cyan else COLORS.pink,
+			Enum.Material.Neon,
+			0.05
+		)
+		shard.CanCollide = false
+	end
+
+	local particles = Instance.new("ParticleEmitter")
+	particles.Name = "RiftParticles"
+	particles.Color = ColorSequence.new(COLORS.purple, COLORS.cyan)
+	particles.LightEmission = 1
+	particles.Rate = 22
+	particles.Lifetime = NumberRange.new(1.5, 3.2)
+	particles.Speed = NumberRange.new(1, 4)
+	particles.SpreadAngle = Vector2.new(180, 180)
+	particles.Rotation = NumberRange.new(0, 360)
+	particles.RotSpeed = NumberRange.new(-90, 90)
+	particles.Size = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.7),
+		NumberSequenceKeypoint.new(0.5, 0.25),
+		NumberSequenceKeypoint.new(1, 0),
+	})
+	particles.Parent = portal
+
+	return portal
+end
+
+-- Layered arena floor and safe combat boundary.
+cylinder(geometry, "Foundation", ARENA_RADIUS * 2, 8, -4, COLORS.void, Enum.Material.Basalt)
+cylinder(geometry, "MainFloor", 205, 1.6, 0.3, COLORS.stone, Enum.Material.Slate)
+cylinder(geometry, "InnerFloor", 128, 0.5, 1.25, COLORS.stoneLight, Enum.Material.Metal)
+ring(geometry, "OuterGoldTrim", 104, 3.2, 1.1, 1.25, COLORS.gold, Enum.Material.Neon, 64, 0.22)
+ring(geometry, "EnergyCircuitA", 87, 1.25, 0.25, 1.45, COLORS.cyan, Enum.Material.Neon, 48, 0.3)
+ring(geometry, "EnergyCircuitB", 61, 1.5, 0.25, 1.58, COLORS.purple, Enum.Material.Neon, 40, 0.28)
+ring(geometry, "CentralHalo", 31, 2.4, 0.35, 2.05, COLORS.pink, Enum.Material.Neon, 32, 0.22)
+
+-- Radial luminous paths keep the room readable during a crowded raid.
+for index = 1, 8 do
+	local angle = ((index - 1) / 8) * math.pi * 2
+	local pathCenter = ORIGIN + Vector3.new(math.cos(angle) * 45, 1.58, math.sin(angle) * 45)
+	part(
+		geometry,
+		string.format("EnergyPath%02d", index),
+		Vector3.new(72, 0.22, 1.2),
+		CFrame.new(pathCenter) * CFrame.Angles(0, -angle, 0),
+		if index % 2 == 0 then COLORS.cyan else COLORS.purple,
+		Enum.Material.Neon,
+		0.46
+	).CanCollide = false
+end
+
+-- Walls and tall rhythm pillars create a dramatic silhouette.
+ring(geometry, "ArenaWall", 110, 5.5, 18, 9, COLORS.stone, Enum.Material.Slate, 64, 0)
+for index = 1, 12 do
+	createPillar(index, ((index - 1) / 12) * math.pi * 2)
+end
+
+-- Elevated arena lights reveal the architecture while preserving the neon palette.
+for index = 1, 8 do
+	local angle = ((index - 1) / 8) * math.pi * 2 + math.rad(22.5)
+	local lampPosition = ORIGIN + Vector3.new(math.cos(angle) * 84, 31, math.sin(angle) * 84)
+	local lampColor = if index % 2 == 0 then Color3.fromRGB(210, 235, 255) else Color3.fromRGB(255, 226, 185)
+	local lamp = part(
+		effects,
+		string.format("ArenaLamp%02d", index),
+		Vector3.new(4.5, 4.5, 4.5),
+		CFrame.new(lampPosition),
+		lampColor,
+		Enum.Material.Neon,
+		0.08,
+		Enum.PartType.Ball
+	)
+	lamp.CanCollide = false
+	addPointLight(lamp, lampColor, 2.6, 60)
+end
+
+-- Eight large hero displays; raid/player markers remain configurable up to 50.
+local animatedGlows = {}
+local floatingCrystals = {}
+for index = 1, 8 do
+	local glow, crystal = createHeroAltar(index, ((index - 1) / 8) * math.pi * 2 + math.rad(22.5))
+	table.insert(animatedGlows, glow)
+	table.insert(floatingCrystals, crystal)
+end
+
+-- Central raid core and holographic countdown.
+local coreBase = cylinder(geometry, "RaidCoreBase", 42, 4, 3.2, COLORS.void, Enum.Material.Metal)
+local coreGlow = cylinder(effects, "RaidCoreGlow", 32, 0.8, 5.6, COLORS.cyan, Enum.Material.Neon, 0.5)
+coreGlow.CanCollide = false
+addPointLight(coreGlow, COLORS.cyan, 3.2, 50)
+
+local coreCrystal = part(
+	effects,
+	"CountdownCrystal",
+	Vector3.new(7, 14, 7),
+	CFrame.new(ORIGIN + Vector3.new(0, 14, 0)) * CFrame.Angles(0, math.rad(45), math.rad(45)),
+	COLORS.white,
+	Enum.Material.Glass,
+	0.15
+)
+coreCrystal.CanCollide = false
+local countdownLabel = addBillboard(coreCrystal, "MEGA RAID", "EVENTO IN PREPARAZIONE", COLORS.gold)
+
+local raidSpawn = part(
+	gameplay,
+	"RaidBossSpawn",
+	Vector3.new(18, 0.5, 18),
+	CFrame.new(ORIGIN + Vector3.new(0, 2, -48)),
+	COLORS.pink,
+	Enum.Material.Neon,
+	0.9
+)
+raidSpawn.CanCollide = false
+raidSpawn:SetAttribute("Purpose", "Spawn the original Brainrot Hero boss here")
+
+local playerSpawn = Instance.new("SpawnLocation")
+playerSpawn.Name = "PlayerSpawn"
+playerSpawn.Anchored = true
+playerSpawn.CanCollide = true
+playerSpawn.Neutral = true
+playerSpawn.Size = Vector3.new(14, 1, 14)
+playerSpawn.CFrame = CFrame.new(ORIGIN + Vector3.new(0, 2.2, 58))
+playerSpawn.Material = Enum.Material.SmoothPlastic
+playerSpawn.Color = COLORS.stone
+playerSpawn.Transparency = 1
+playerSpawn.Duration = 0
+playerSpawn.Parent = gameplay
+
+local portal = createPortal()
+
+-- Original cosmic lighting; no external images or audio are required.
+Lighting.Brightness = 3.0
+Lighting.ExposureCompensation = 0.38
+Lighting.Ambient = Color3.fromRGB(84, 82, 115)
+Lighting.OutdoorAmbient = Color3.fromRGB(61, 70, 101)
+Lighting.ColorShift_Top = Color3.fromRGB(46, 34, 78)
+Lighting.FogColor = Color3.fromRGB(29, 31, 65)
+Lighting.FogStart = 240
+Lighting.FogEnd = 680
+
+for _, effectName in { "BrainrotArenaBloom", "BrainrotArenaColor", "BrainrotArenaAtmosphere" } do
+	local old = Lighting:FindFirstChild(effectName)
+	if old then
+		old:Destroy()
+	end
+end
+
+local bloom = Instance.new("BloomEffect")
+bloom.Name = "BrainrotArenaBloom"
+bloom.Intensity = 0.48
+bloom.Size = 24
+bloom.Threshold = 1.45
+bloom.Parent = Lighting
+
+local colorCorrection = Instance.new("ColorCorrectionEffect")
+colorCorrection.Name = "BrainrotArenaColor"
+colorCorrection.Brightness = 0.05
+colorCorrection.Contrast = 0.06
+colorCorrection.Saturation = 0.08
+colorCorrection.TintColor = Color3.fromRGB(239, 242, 255)
+colorCorrection.Parent = Lighting
+
+local atmosphere = Instance.new("Atmosphere")
+atmosphere.Name = "BrainrotArenaAtmosphere"
+atmosphere.Color = Color3.fromRGB(91, 78, 156)
+atmosphere.Decay = Color3.fromRGB(17, 11, 38)
+atmosphere.Density = 0.08
+atmosphere.Glare = 0.2
+atmosphere.Haze = 0.65
+atmosphere.Parent = Lighting
+
+-- Slow, low-cost ambient motion. It gives the room life without flooding mobile devices.
+task.spawn(function()
+	local pulseInfo = TweenInfo.new(2.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
+	TweenService:Create(portal, pulseInfo, { Transparency = 0.5, Color = COLORS.pink }):Play()
+	TweenService:Create(coreGlow, TweenInfo.new(1.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+		Transparency = 0.68,
+		Color = COLORS.purple,
+	}):Play()
+	for index, glow in animatedGlows do
+		local target = if index % 2 == 0 then COLORS.purple else COLORS.cyan
+		TweenService:Create(glow, TweenInfo.new(2 + index * 0.08, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+			Transparency = 0.32,
+			Color = target,
+		}):Play()
+	end
+
+	local elapsed = 0
+	while arena.Parent do
+		local delta = task.wait(0.05)
+		elapsed += delta
+		coreCrystal.CFrame = CFrame.new(ORIGIN + Vector3.new(0, 14 + math.sin(elapsed * 1.2) * 1.2, 0))
+			* CFrame.Angles(elapsed * 0.35, elapsed * 0.55, math.rad(45))
+		for index, crystal in floatingCrystals do
+			crystal.CFrame *= CFrame.Angles(0, 0.012 + index * 0.0005, 0)
+		end
+	end
+end)
+
+-- Preview countdown text. The future raid controller can replace this attribute-driven display.
+task.spawn(function()
+	local previewMessages = {
+		"EVENTO IN PREPARAZIONE",
+		"1 HERO COMPLETO • FRAMMENTI PER TUTTI",
+		"COMBATTI PER ENTRARE NELL'ESTRAZIONE",
+	}
+	local index = 1
+	while arena.Parent do
+		countdownLabel.Text = previewMessages[index]
+		index = (index % #previewMessages) + 1
+		task.wait(4.5)
+	end
+end)
+
+arena.PrimaryPart = coreBase
+print("Brainrot Heroes Raid Arena ready")
+]]></string>
+      </Properties>
+    </Item>
+  </Item>
+  <Item class="StarterPlayer" referent="3">
+    <Properties>
+      <string name="Name">StarterPlayer</string>
+    </Properties>
+    <Item class="StarterPlayerScripts" referent="4">
+      <Properties>
+        <string name="Name">StarterPlayerScripts</string>
+      </Properties>
+      <Item class="LocalScript" referent="5">
+        <Properties>
+          <string name="Name">ArenaPresentation</string>
+          <string name="Source"><![CDATA[--!strict
+
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "BrainrotHeroesArenaHUD"
+screenGui.ResetOnSpawn = false
+screenGui.IgnoreGuiInset = true
+screenGui.DisplayOrder = 10
+screenGui.Parent = playerGui
+
+local status = Instance.new("Frame")
+status.Name = "RaidStatus"
+status.AnchorPoint = Vector2.new(0.5, 0)
+status.Position = UDim2.fromScale(0.5, 0.025)
+status.Size = UDim2.fromOffset(440, 64)
+status.BackgroundColor3 = Color3.fromRGB(8, 9, 24)
+status.BackgroundTransparency = 0.16
+status.BorderSizePixel = 0
+status.Parent = screenGui
+
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 20)
+corner.Parent = status
+
+local stroke = Instance.new("UIStroke")
+stroke.Color = Color3.fromRGB(45, 235, 255)
+stroke.Thickness = 2
+stroke.Transparency = 0.18
+stroke.Parent = status
+
+local gradient = Instance.new("UIGradient")
+gradient.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(45, 235, 255)),
+	ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 204, 76)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(170, 67, 255)),
+})
+gradient.Parent = stroke
+
+local title = Instance.new("TextLabel")
+title.BackgroundTransparency = 1
+title.Position = UDim2.fromScale(0.04, 0.09)
+title.Size = UDim2.fromScale(0.92, 0.44)
+title.Font = Enum.Font.GothamBlack
+title.Text = "BRAINROT HEROES • RAID HUB"
+title.TextColor3 = Color3.fromRGB(244, 249, 255)
+title.TextScaled = true
+title.Parent = status
+
+local subtitle = Instance.new("TextLabel")
+subtitle.BackgroundTransparency = 1
+subtitle.Position = UDim2.fromScale(0.04, 0.57)
+subtitle.Size = UDim2.fromScale(0.92, 0.23)
+subtitle.Font = Enum.Font.GothamBold
+subtitle.Text = "Esplora, potenzia i tuoi Heroes e preparati all'evento"
+subtitle.TextColor3 = Color3.fromRGB(255, 204, 76)
+subtitle.TextScaled = true
+subtitle.Parent = status
+
+TweenService:Create(status, TweenInfo.new(0.7, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+	Position = UDim2.fromScale(0.5, 0.018),
+}):Play()
+
+task.spawn(function()
+	while screenGui.Parent do
+		TweenService:Create(gradient, TweenInfo.new(4, Enum.EasingStyle.Linear), { Rotation = gradient.Rotation + 180 }):Play()
+		task.wait(4)
+	end
+end)
+]]></string>
+        </Properties>
+      </Item>
+    </Item>
+  </Item>
+  <Item class="Workspace" referent="6">
+    <Properties>
+      <string name="Name">Workspace</string>
+      <float name="Gravity">196.2</float>
+      <bool name="NeedsPivotMigration">false</bool>
+      <bool name="StreamingEnabled">true</bool>
+    </Properties>
+  </Item>
+</roblox>
