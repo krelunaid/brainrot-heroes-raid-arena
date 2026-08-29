@@ -1989,19 +1989,54 @@ for side = -1, 1, 2 do
 	light(column, column.Color, 1.1, 26)
 end
 
-local tutorialTexts = {
-	{ "1", "ARMA PRONTA", COLORS.cyan },
-	{ "2", "ENTRA NEL RAID", COLORS.purple },
-	{ "3", "TOCCA ATTACCA", COLORS.pink },
-}
-for index, data in tutorialTexts do
-	local x = (index - 2) * 14
-	local sign = part(zones, "TutorialStep", Vector3.new(11, 6, 0.8), CFrame.new(LOFT_ORIGIN + Vector3.new(x, 4.6, 35)), data[3] :: Color3, Enum.Material.Neon, 0.08)
-	billboard(sign, data[1] :: string, data[2] :: string, data[3] :: Color3, 150)
+local runway = part(gameplay, "CriticalRunway", Vector3.new(8, 0.28, 48), CFrame.new(LOFT_ORIGIN + Vector3.new(0, 0.82, 31)), COLORS.ink, Enum.Material.SmoothPlastic)
+runway.CanCollide = false
+for index = 1, 4 do
+	local runwayLight = part(effects, "RunwayLight", Vector3.new(0.5, 0.5, 0.5), CFrame.new(LOFT_ORIGIN + Vector3.new(0, 7, 52 - index * 11)), COLORS.cyan, Enum.Material.Neon, 1)
+	runwayLight.CanCollide = false
+	light(runwayLight, COLORS.cyan, 3, 24)
 end
 
--- 8x8 interactive-looking LED floor: large enough for a group, compact enough for mobile.
-zoneAnchor("DanceFloor", Vector3.new(0, 3, 12), "PISTA LED", "BALLA MENTRE ASPETTI", COLORS.pink)
+local weaponStations = {
+	{ name = "NOVA PULSE", tool = "Nova Pulse", color = COLORS.cyan, shape = "BLASTER" },
+	{ name = "PRISM FANG", tool = "Prism Fang", color = COLORS.purple, shape = "BLADE" },
+	{ name = "STARBREAKER X", tool = "Starbreaker X", color = COLORS.pink, shape = "ROCKET" },
+}
+for index, data in weaponStations do
+	local x = (index - 2) * 6
+	local stationColor = data.color :: Color3
+	local pedestal = part(gameplay, "WeaponPedestal", Vector3.new(2, 3.5, 2), CFrame.new(LOFT_ORIGIN + Vector3.new(x, 2.55, 35)), stationColor, Enum.Material.Neon, 0.08)
+	light(pedestal, stationColor, 5, 16)
+	local display: Part
+	if data.shape == "BLADE" then
+		display = part(gameplay, "WeaponDisplay", Vector3.new(0.65, 7, 1.4), pedestal.CFrame * CFrame.new(0, 5.1, 0) * CFrame.Angles(0, 0, math.rad(-12)), stationColor, Enum.Material.Neon)
+	elseif data.shape == "ROCKET" then
+		display = part(gameplay, "WeaponDisplay", Vector3.new(2.8, 2.8, 6.5), pedestal.CFrame * CFrame.new(0, 4.8, 0) * CFrame.Angles(0, math.rad(90), math.rad(-8)), stationColor, Enum.Material.Neon)
+	else
+		display = part(gameplay, "WeaponDisplay", Vector3.new(3.4, 2.5, 5.5), pedestal.CFrame * CFrame.new(0, 4.8, 0) * CFrame.Angles(0, math.rad(90), 0), stationColor, Enum.Material.Neon)
+	end
+	display.CanCollide = false
+	billboard(display, data.name :: string, "TOCCA • EQUIPAGGIA", stationColor, 190)
+	local equipPrompt = Instance.new("ProximityPrompt")
+	equipPrompt.ActionText = "EQUIPAGGIA"
+	equipPrompt.ObjectText = data.name :: string
+	equipPrompt.HoldDuration = 0
+	equipPrompt.MaxActivationDistance = 8
+	equipPrompt.RequiresLineOfSight = false
+	equipPrompt.Parent = pedestal
+	equipPrompt.Triggered:Connect(function(player)
+		local backpack = player:FindFirstChildOfClass("Backpack")
+		local character = player.Character
+		local humanoid = if character then character:FindFirstChildWhichIsA("Humanoid") else nil
+		local tool = if backpack then backpack:FindFirstChild(data.tool :: string) else nil
+		if humanoid and tool and tool:IsA("Tool") then
+			humanoid:EquipTool(tool)
+		end
+	end)
+end
+
+-- The LED floor stays behind the critical route: it is social scenery, not a false objective.
+zoneAnchor("DanceFloor", Vector3.new(0, 3, -27), "PISTA LED", "BALLA MENTRE ASPETTI", COLORS.pink)
 local danceTiles: { Part } = {}
 for row = 1, 8 do
 	for column = 1, 8 do
@@ -2011,20 +2046,20 @@ for row = 1, 8 do
 			zones,
 			"DanceTile",
 			Vector3.new(3.55, 0.42, 3.55),
-			CFrame.new(LOFT_ORIGIN + Vector3.new((column - 4.5) * 3.8, 0.95, 12 + (row - 4.5) * 3.8)),
+			CFrame.new(LOFT_ORIGIN + Vector3.new((column - 4.5) * 3.8, 0.95, -27 + (row - 4.5) * 3.8)),
 			color,
 			Enum.Material.Neon,
-			0.12
+			0.48
 		)
 		table.insert(danceTiles, tile)
 	end
 end
 
 -- DJ booth anchors the far edge of the dance floor without blocking the raid path.
-part(zones, "DJBooth", Vector3.new(22, 4.5, 5), CFrame.new(LOFT_ORIGIN + Vector3.new(0, 3, -7)), COLORS.ink, Enum.Material.Metal)
-part(zones, "DJGlow", Vector3.new(20, 1.2, 0.5), CFrame.new(LOFT_ORIGIN + Vector3.new(0, 4.5, -4.5)), COLORS.pink, Enum.Material.Neon)
+part(zones, "DJBooth", Vector3.new(22, 4.5, 5), CFrame.new(LOFT_ORIGIN + Vector3.new(0, 3, -49)), COLORS.ink, Enum.Material.Metal)
+part(zones, "DJGlow", Vector3.new(20, 1.2, 0.5), CFrame.new(LOFT_ORIGIN + Vector3.new(0, 4.5, -46.5)), COLORS.pink, Enum.Material.Neon, 0.38)
 for side = -1, 1, 2 do
-	local speaker = part(zones, "Speaker", Vector3.new(5, 9, 4), CFrame.new(LOFT_ORIGIN + Vector3.new(side * 15, 4.9, -7)), COLORS.ink, Enum.Material.Metal)
+	local speaker = part(zones, "Speaker", Vector3.new(5, 9, 4), CFrame.new(LOFT_ORIGIN + Vector3.new(side * 15, 4.9, -49)), COLORS.ink, Enum.Material.Metal)
 	for y = -2, 2, 4 do
 		part(zones, "SpeakerCone", Vector3.new(1, 3.2, 3.2), speaker.CFrame * CFrame.new(0, y, -2.05) * CFrame.Angles(0, math.rad(90), 0), COLORS.purple, Enum.Material.Neon, 0.08, Enum.PartType.Cylinder)
 	end
@@ -2091,18 +2126,30 @@ end
 part(zones, "SelfieTop", Vector3.new(37, 1, 1), CFrame.new(LOFT_ORIGIN + Vector3.new(54, 13, -57)), COLORS.purple, Enum.Material.Neon)
 
 -- Direct navigation: cyan path from spawn, via the dance floor, into a bright raid elevator.
+local pathBeams: { Part } = {}
 for index = 1, 12 do
 	local alpha = index / 13
-	local z = 39 + (-70 * alpha)
+	local z = 49 + (-38 * alpha)
 	local arrow = part(gameplay, "RaidPathArrow", Vector3.new(4.8, 0.25, 2.2), CFrame.new(LOFT_ORIGIN + Vector3.new(0, 1.1, z)), if index % 2 == 0 then COLORS.cyan else COLORS.purple, Enum.Material.Neon, 0.1)
 	arrow.CanCollide = false
+	table.insert(pathBeams, arrow)
 end
 
-local portalFrame = part(gameplay, "RaidPortalFrame", Vector3.new(24, 19, 3), CFrame.new(LOFT_ORIGIN + Vector3.new(0, 10, -46)), COLORS.ink, Enum.Material.Metal)
-local raidPortal = part(gameplay, "RaidPortal", Vector3.new(18, 15, 1.2), portalFrame.CFrame * CFrame.new(0, 0, -1.8), COLORS.cyan, Enum.Material.Neon, 0.12)
+local portalFrame = part(gameplay, "RaidPortalFrame", Vector3.new(16, 18, 3), CFrame.new(LOFT_ORIGIN + Vector3.new(0, 9.5, 10)), COLORS.ink, Enum.Material.Metal)
+local raidPortal = part(gameplay, "RaidPortal", Vector3.new(11, 14, 1.2), portalFrame.CFrame * CFrame.new(0, 0, -1.8), COLORS.cyan, Enum.Material.Neon, 0.28)
 raidPortal.CanCollide = false
-light(raidPortal, COLORS.cyan, 2.2, 34)
+light(raidPortal, COLORS.cyan, 5, 18)
 billboard(raidPortal, "ENTRA NEL RAID", "PRISMA REX • ARMA PRONTA", COLORS.pink, 320)
+
+-- A readable boss silhouette sits on the portal axis so the goal is visible before teleporting.
+local bossPreview = part(effects, "PrismaRexPreview", Vector3.new(9, 11, 6), CFrame.new(LOFT_ORIGIN + Vector3.new(0, 7, -2)), COLORS.purple, Enum.Material.Neon, 0.55)
+bossPreview.CanCollide = false
+local previewHead = part(effects, "PrismaRexPreviewHead", Vector3.new(7, 7, 7), bossPreview.CFrame * CFrame.new(0, 8, 0), COLORS.pink, Enum.Material.Neon, 0.48, Enum.PartType.Ball)
+previewHead.CanCollide = false
+for side = -1, 1, 2 do
+	local horn = part(effects, "PrismaRexPreviewHorn", Vector3.new(2, 8, 2), previewHead.CFrame * CFrame.new(side * 4, 4, 0) * CFrame.Angles(0, 0, math.rad(side * -24)), COLORS.gold, Enum.Material.Neon, 0.42)
+	horn.CanCollide = false
+end
 
 local prompt = Instance.new("ProximityPrompt")
 prompt.Name = "EnterRaidPrompt"
@@ -2221,19 +2268,15 @@ if atmosphere and atmosphere:IsA("Atmosphere") then
 	atmosphere.Decay = Color3.fromRGB(54, 46, 92)
 end
 
--- Slow shared animation: one loop controls every tile, avoiding 64 individual tweens.
-task.spawn(function()
-	local palette = { COLORS.cyan, COLORS.purple, COLORS.pink, COLORS.gold }
-	local phase = 0
-	while lobby.Parent do
-		phase += 1
-		for index, tile in danceTiles do
-			tile.Color = palette[((index + phase - 1) % #palette) + 1]
-			tile.Transparency = 0.08 + math.abs(math.sin((index + phase) * 0.43)) * 0.2
-		end
-		task.wait(0.42)
-	end
-end)
+-- Only the critical runway moves. Side zones remain calmer so the objective wins visually.
+for index, beam in pathBeams do
+	local travel = TweenService:Create(
+		beam,
+		TweenInfo.new(1.25, Enum.EasingStyle.Linear, Enum.EasingDirection.In, -1, false, index * 0.06),
+		{ CFrame = beam.CFrame * CFrame.new(0, 0, -6) }
+	)
+	travel:Play()
+end
 
 TweenService:Create(raidPortal, TweenInfo.new(1.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
 	Color = COLORS.pink,
@@ -2594,20 +2637,20 @@ if UserInputService.TouchEnabled then
 	local button = Instance.new("TextButton")
 	button.Name = "MobileAttackButton"
 	button.AnchorPoint = Vector2.new(1, 1)
-	button.Position = UDim2.fromScale(0.96, 0.9)
-	button.Size = UDim2.fromOffset(128, 128)
+	button.Position = UDim2.fromScale(0.94, 0.82)
+	button.Size = UDim2.fromOffset(160, 64)
 	button.BackgroundColor3 = Color3.fromRGB(255, 62, 176)
 	button.BackgroundTransparency = 0.06
 	button.BorderSizePixel = 0
 	button.AutoButtonColor = true
 	button.Font = Enum.Font.GothamBlack
-	button.Text = "⚡\nATTACCA"
+	button.Text = "⚡  ATTACCA"
 	button.TextColor3 = Color3.fromRGB(255, 255, 255)
 	button.TextScaled = true
-	button.Visible = arena:GetAttribute("RaidState") == "ACTIVE"
+	button.Visible = false
 	button.Parent = screenGui
 	local buttonCorner = Instance.new("UICorner")
-	buttonCorner.CornerRadius = UDim.new(1, 0)
+	buttonCorner.CornerRadius = UDim.new(0.5, 0)
 	buttonCorner.Parent = button
 	local buttonStroke = Instance.new("UIStroke")
 	buttonStroke.Color = Color3.fromRGB(255, 205, 78)
@@ -2615,8 +2658,8 @@ if UserInputService.TouchEnabled then
 	buttonStroke.Parent = button
 	button.Activated:Connect(function()
 		raidAttack("BrainrotRaidAttack", Enum.UserInputState.Begin)
-		button.Size = UDim2.fromOffset(116, 116)
-		TweenService:Create(button, TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(128, 128) }):Play()
+		button.Size = UDim2.fromOffset(150, 58)
+		TweenService:Create(button, TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(160, 64) }):Play()
 	end)
 	touchAttackButton = button
 end
@@ -2634,7 +2677,8 @@ task.spawn(function()
 				refreshCombatHint()
 			end
 			if touchAttackButton then
-				touchAttackButton.Visible = state == "ACTIVE" and not playerInLoft
+				local hasWeapon = character ~= nil and character:FindFirstChildWhichIsA("Tool") ~= nil
+				touchAttackButton.Visible = state == "ACTIVE" and not playerInLoft and hasWeapon
 			end
 			local target = if playerInLoft and raidPortalTarget then raidPortalTarget elseif state == "COUNTDOWN" then shuttleTarget else bossTarget
 			targetGui.Adornee = target

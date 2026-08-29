@@ -331,20 +331,20 @@ if UserInputService.TouchEnabled then
 	local button = Instance.new("TextButton")
 	button.Name = "MobileAttackButton"
 	button.AnchorPoint = Vector2.new(1, 1)
-	button.Position = UDim2.fromScale(0.96, 0.9)
-	button.Size = UDim2.fromOffset(128, 128)
+	button.Position = UDim2.fromScale(0.94, 0.82)
+	button.Size = UDim2.fromOffset(160, 64)
 	button.BackgroundColor3 = Color3.fromRGB(255, 62, 176)
 	button.BackgroundTransparency = 0.06
 	button.BorderSizePixel = 0
 	button.AutoButtonColor = true
 	button.Font = Enum.Font.GothamBlack
-	button.Text = "⚡\nATTACCA"
+	button.Text = "⚡  ATTACCA"
 	button.TextColor3 = Color3.fromRGB(255, 255, 255)
 	button.TextScaled = true
-	button.Visible = arena:GetAttribute("RaidState") == "ACTIVE"
+	button.Visible = false
 	button.Parent = screenGui
 	local buttonCorner = Instance.new("UICorner")
-	buttonCorner.CornerRadius = UDim.new(1, 0)
+	buttonCorner.CornerRadius = UDim.new(0.5, 0)
 	buttonCorner.Parent = button
 	local buttonStroke = Instance.new("UIStroke")
 	buttonStroke.Color = Color3.fromRGB(255, 205, 78)
@@ -352,8 +352,8 @@ if UserInputService.TouchEnabled then
 	buttonStroke.Parent = button
 	button.Activated:Connect(function()
 		raidAttack("BrainrotRaidAttack", Enum.UserInputState.Begin)
-		button.Size = UDim2.fromOffset(116, 116)
-		TweenService:Create(button, TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(128, 128) }):Play()
+		button.Size = UDim2.fromOffset(150, 58)
+		TweenService:Create(button, TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(160, 64) }):Play()
 	end)
 	touchAttackButton = button
 end
@@ -371,7 +371,8 @@ task.spawn(function()
 				refreshCombatHint()
 			end
 			if touchAttackButton then
-				touchAttackButton.Visible = state == "ACTIVE" and not playerInLoft
+				local hasWeapon = character ~= nil and character:FindFirstChildWhichIsA("Tool") ~= nil
+				touchAttackButton.Visible = state == "ACTIVE" and not playerInLoft and hasWeapon
 			end
 			local target = if playerInLoft and raidPortalTarget then raidPortalTarget elseif state == "COUNTDOWN" then shuttleTarget else bossTarget
 			targetGui.Adornee = target
