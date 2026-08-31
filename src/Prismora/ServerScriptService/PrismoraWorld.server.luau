@@ -13,6 +13,8 @@ local ASSETS = {
 
 local WORLD_ORIGIN = CFrame.new(0, 58, 0)
 local WORLD_SCALE = 3.2
+local FALL_RECOVERY_Y = 24
+local WORLD_EDGE_LIMIT = 390
 
 -- The original Blender island becomes the central castle district. Four cloned
 -- landmasses turn it into an explorable archipelago without making the castle,
@@ -44,9 +46,9 @@ local function addPostProcessing()
 
 	local bloom = Instance.new("BloomEffect")
 	bloom.Name = "PrismoraBloom"
-	bloom.Intensity = 0.7
-	bloom.Size = 22
-	bloom.Threshold = 1.05
+	bloom.Intensity = 0.28
+	bloom.Size = 16
+	bloom.Threshold = 1.35
 	bloom:SetAttribute("PrismoraEffect", true)
 	bloom.Parent = Lighting
 
@@ -67,7 +69,9 @@ local function configureParts(container, canCollide)
 			item.Anchored = true
 			item.CanCollide = canCollide
 			item.CanTouch = false
-			item.CanQuery = true
+			-- Imported meshes are visual only. Gameplay always uses thick Roblox
+			-- primitives so mesh collision fidelity can never swallow a player.
+			item.CanQuery = canCollide
 			item.CastShadow = true
 		end
 	end
@@ -101,9 +105,10 @@ local function createCheckpoint(parent, position, accentColor, name)
 	checkpoint.CanTouch = true
 	checkpoint.Material = Enum.Material.Neon
 	checkpoint.Color = accentColor
-	checkpoint.Transparency = 0.38
-	checkpoint.Size = Vector3.new(3, 8, 3)
-	checkpoint.CFrame = CFrame.new(position + Vector3.new(0, 4, 0)) * CFrame.Angles(0, 0, math.rad(45))
+	-- Technical checkpoint trigger: never expose collision/debug geometry to players.
+	checkpoint.Transparency = 1
+	checkpoint.Size = Vector3.new(1.4, 4, 1.4)
+	checkpoint.CFrame = CFrame.new(position + Vector3.new(0, 2, 0)) * CFrame.Angles(0, 0, math.rad(45))
 	checkpoint.Parent = parent
 
 	checkpoint.Touched:Connect(function(hit)
@@ -118,9 +123,9 @@ end
 local function createWalkSurface(parent, island, name, accentColor)
 	local boundsCFrame, boundsSize = island:GetBoundingBox()
 	local topY = boundsCFrame.Position.Y + (boundsSize.Y * 0.5)
-	local sizeX = math.clamp(boundsSize.X * 0.68, 72, 128)
-	local sizeZ = math.clamp(boundsSize.Z * 0.68, 64, 118)
-	local center = Vector3.new(boundsCFrame.Position.X, topY + 0.45, boundsCFrame.Position.Z)
+	local sizeX = math.clamp(boundsSize.X * 0.9, 86, 176)
+	local sizeZ = math.clamp(boundsSize.Z * 0.9, 80, 164)
+	local center = Vector3.new(boundsCFrame.Position.X, topY - 1.25, boundsCFrame.Position.Z)
 
 	local surface = Instance.new("Part")
 	surface.Name = name .. "PlayableSurface"
@@ -128,12 +133,14 @@ local function createWalkSurface(parent, island, name, accentColor)
 	surface.CanCollide = true
 	surface.CanTouch = false
 	surface.Transparency = 1
-	surface.Size = Vector3.new(sizeX, 1, sizeZ)
+	surface.Size = Vector3.new(sizeX, 4, sizeZ)
 	surface.CFrame = CFrame.new(center)
 	surface.Parent = parent
 
-	createCheckpoint(parent, center + Vector3.new(0, 1, 0), accentColor, name)
-	return { center = center, size = Vector2.new(sizeX, sizeZ), topY = center.Y }
+	local surfaceTop = center.Y + (surface.Size.Y * 0.5)
+	local playableCenter = Vector3.new(center.X, surfaceTop, center.Z)
+	createCheckpoint(parent, playableCenter + Vector3.new(0, 1, 0), accentColor, name)
+	return { center = playableCenter, size = Vector2.new(sizeX, sizeZ), topY = surfaceTop }
 end
 
 local function createBridge(parent, fromData, toData, accentColor)
@@ -161,7 +168,7 @@ local function createBridge(parent, fromData, toData, accentColor)
 		deck.CanCollide = true
 		deck.Material = Enum.Material.Cobblestone
 		deck.Color = Color3.fromRGB(232, 205, 164)
-		deck.Size = Vector3.new(24, 2.2, segmentLength)
+		deck.Size = Vector3.new(24, 3.5, segmentLength)
 		deck.CFrame = bridgeCFrame
 		deck.Parent = parent
 
@@ -195,9 +202,70 @@ local function createBridge(parent, fromData, toData, accentColor)
 		landing.CanCollide = true
 		landing.Material = Enum.Material.Cobblestone
 		landing.Color = Color3.fromRGB(232, 205, 164)
-		landing.Size = Vector3.new(28, 2.2, 24)
+		landing.Size = Vector3.new(28, 3.5, 24)
 		landing.CFrame = CFrame.new(endpoint)
 		landing.Parent = parent
+	end
+end
+
+local function sideToward(fromPosition, toPosition)
+	local delta = toPosition - fromPosition
+	if math.abs(delta.X) > math.abs(delta.Z) then
+		return delta.X >= 0 and "East" or "West"
+	end
+	return delta.Z >= 0 and "South" or "North"
+end
+
+local function createSafetyPerimeter(parent, data, openSides, accentColor)
+	local gap = 30
+	local height = 6
+	local function addSection(name, size, position)
+		local barrier = Instance.new("Part")
+		barrier.Name = name .. "SafetyBarrier"
+		barrier.Anchored = true
+		barrier.CanCollide = true
+		barrier.CanTouch = false
+		barrier.CanQuery = false
+		barrier.Material = Enum.Material.Glass
+		barrier.Color = accentColor
+		barrier.Transparency = 1
+		barrier.Size = size
+		barrier.CFrame = CFrame.new(position)
+		barrier.Parent = parent
+
+		local rail = Instance.new("Part")
+		rail.Name = name .. "SafetyGlow"
+		rail.Anchored = true
+		rail.CanCollide = false
+		rail.CanTouch = false
+		rail.CanQuery = false
+		rail.Material = Enum.Material.Neon
+		rail.Color = accentColor
+		rail.Transparency = 1
+		rail.Size = Vector3.new(size.X, 0.32, size.Z)
+		rail.CFrame = CFrame.new(position + Vector3.new(0, (height * 0.5) - 0.18, 0))
+		rail.Parent = parent
+	end
+
+	for _, side in {
+		{ name = "North", length = data.size.X, edge = Vector3.new(0, 0, -data.size.Y * 0.5), alongX = true },
+		{ name = "South", length = data.size.X, edge = Vector3.new(0, 0, data.size.Y * 0.5), alongX = true },
+		{ name = "East", length = data.size.Y, edge = Vector3.new(data.size.X * 0.5, 0, 0), alongX = false },
+		{ name = "West", length = data.size.Y, edge = Vector3.new(-data.size.X * 0.5, 0, 0), alongX = false },
+	} do
+		local sectionLength = side.length
+		local centers = { 0 }
+		if openSides[side.name] then
+			sectionLength = math.max(4, (side.length - gap) * 0.5)
+			local offset = (gap * 0.5) + (sectionLength * 0.5)
+			centers = { -offset, offset }
+		end
+		for index, centerOffset in centers do
+			local lateral = side.alongX and Vector3.new(centerOffset, 0, 0) or Vector3.new(0, 0, centerOffset)
+			local size = side.alongX and Vector3.new(sectionLength, height, 1.5) or Vector3.new(1.5, height, sectionLength)
+			local position = data.center + side.edge + lateral + Vector3.new(0, height * 0.5, 0)
+			addSection(side.name .. index, size, position)
+		end
 	end
 end
 
@@ -220,10 +288,10 @@ local function createDistrictBeacon(parent, district, position)
 
 	local billboard = Instance.new("BillboardGui")
 	billboard.Name = "DistrictLabel"
-	billboard.Size = UDim2.fromOffset(250, 54)
+	billboard.Size = UDim2.fromOffset(150, 34)
 	billboard.StudsOffset = Vector3.new(0, 13, 0)
 	billboard.AlwaysOnTop = true
-	billboard.MaxDistance = 260
+	billboard.MaxDistance = 90
 	billboard.Parent = beacon
 
 	local label = Instance.new("TextLabel")
@@ -254,9 +322,11 @@ local function createArchipelago(world)
 	districtFolder.Parent = world
 
 	local centralData = createWalkSurface(world, centralIsland, "PrismaHub", Color3.fromRGB(118, 255, 235))
-	workspace:SetAttribute("PrismoraSpawnPoint", centralData.center + Vector3.new(0, 3, 0))
-	workspace:SetAttribute("PrismoraCombatCenter", centralData.center + Vector3.new(0, 2, -20))
+	workspace:SetAttribute("PrismoraSpawnPoint", centralData.center + Vector3.new(0, 3, 24))
+	workspace:SetAttribute("PrismoraCombatCenter", centralData.center + Vector3.new(0, 2, -28))
 
+	local centralOpenings = {}
+	local districtPerimeters = {}
 	for _, district in DISTRICTS do
 		local island = centralIsland:Clone()
 		island.Name = district.name .. "Island"
@@ -267,8 +337,20 @@ local function createArchipelago(world)
 
 		local districtData = createWalkSurface(districtFolder, island, district.name, district.color)
 		createBridge(districtFolder, centralData, districtData, district.color)
+		centralOpenings[sideToward(centralData.center, districtData.center)] = true
+		table.insert(districtPerimeters, {
+			data = districtData,
+			openings = { [sideToward(districtData.center, centralData.center)] = true },
+			color = district.color,
+		})
 		createDistrictBeacon(districtFolder, district, districtData.center + Vector3.new(0, 2, 0))
 		workspace:SetAttribute("Prismora" .. district.name .. "Center", districtData.center + Vector3.new(0, 2, 0))
+	end
+	-- Gate 1 safety test: keep every edge closed. Bridge openings are restored
+	-- one at a time only after the floor, recovery and knockback probes pass.
+	createSafetyPerimeter(world, centralData, {}, Color3.fromRGB(118, 255, 235))
+	for _, perimeter in districtPerimeters do
+		createSafetyPerimeter(districtFolder, perimeter.data, {}, perimeter.color)
 	end
 end
 
@@ -307,33 +389,6 @@ else
 	createArchipelago(world)
 end
 
-local rescue = Instance.new("Part")
-rescue.Name = "PrismoraRescueField"
-rescue.Anchored = true
-rescue.CanCollide = false
-rescue.CanTouch = true
-rescue.Transparency = 1
-rescue.Size = Vector3.new(720, 3, 650)
-rescue.CFrame = CFrame.new(0, 8, 0)
-rescue.Parent = world
-
-local rescueDebounce = {}
-rescue.Touched:Connect(function(hit)
-	local character = hit:FindFirstAncestorOfClass("Model")
-	local player = character and Players:GetPlayerFromCharacter(character)
-	local root = character and character:FindFirstChild("HumanoidRootPart")
-	if not player or not root or rescueDebounce[player] then
-		return
-	end
-	rescueDebounce[player] = true
-	local checkpoint = player:GetAttribute("PrismoraCheckpoint") or workspace:GetAttribute("PrismoraSpawnPoint")
-	root.AssemblyLinearVelocity = Vector3.zero
-	root.CFrame = CFrame.new(checkpoint + Vector3.new(0, 3, 0))
-	task.delay(1, function()
-		rescueDebounce[player] = nil
-	end)
-end)
-
 -- Start on the wide south bridge instead of raycasting against the imported
 -- island mesh. Its collision hull can report a point inside the floating rock.
 -- This fixed point is open, safe, and immediately shows the larger world.
@@ -342,11 +397,11 @@ local spawnPosition = workspace:GetAttribute("PrismoraSpawnPoint") or Vector3.ne
 local spawn = Instance.new("SpawnLocation")
 spawn.Name = "PrismoraSpawn"
 spawn.Anchored = true
-spawn.CanCollide = true
+spawn.CanCollide = false
 spawn.Neutral = true
 spawn.Material = Enum.Material.Neon
 spawn.Color = Color3.fromRGB(118, 255, 235)
-spawn.Transparency = 0.28
+spawn.Transparency = 1
 spawn.Size = Vector3.new(8, 1, 8)
 local lookAt = workspace:GetAttribute("PrismoraCombatCenter") or (spawnPosition + Vector3.new(0, 0, -20))
 spawn.CFrame = CFrame.lookAt(spawnPosition, Vector3.new(lookAt.X, spawnPosition.Y, lookAt.Z))
@@ -354,9 +409,69 @@ spawn.Parent = workspace
 
 local glow = Instance.new("PointLight")
 glow.Color = spawn.Color
-glow.Brightness = 1.4
-glow.Range = 18
+glow.Brightness = 0
+glow.Range = 0
 glow.Parent = spawn
+
+-- Touched events can be skipped when a fast character tunnels through a thin
+-- part. Polling also recovers a player before Roblox destroys the character.
+local lastSafeCFrame = {}
+local airStillSince = {}
+
+local function recoveryCFrame(player)
+	if lastSafeCFrame[player] then
+		return lastSafeCFrame[player]
+	end
+	local checkpoint = player:GetAttribute("PrismoraCheckpoint")
+	if typeof(checkpoint) == "Vector3" then
+		return CFrame.new(checkpoint + Vector3.new(0, 3, 0))
+	end
+	return CFrame.new(spawnPosition + Vector3.new(0, 3, 0))
+end
+
+Players.PlayerRemoving:Connect(function(player)
+	lastSafeCFrame[player] = nil
+	airStillSince[player] = nil
+end)
+
+task.spawn(function()
+	while world.Parent do
+		for _, player in Players:GetPlayers() do
+			local character = player.Character
+			local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+			local root = character and character:FindFirstChild("HumanoidRootPart")
+			if humanoid and root and humanoid.Health > 0 then
+				local position = root.Position
+				local outside = math.abs(position.X) > WORLD_EDGE_LIMIT or math.abs(position.Z) > WORLD_EDGE_LIMIT
+				if position.Y < FALL_RECOVERY_Y or outside then
+					character:PivotTo(recoveryCFrame(player))
+					root.AssemblyLinearVelocity = Vector3.zero
+					root.AssemblyAngularVelocity = Vector3.zero
+					humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+					airStillSince[player] = nil
+				elseif humanoid.FloorMaterial ~= Enum.Material.Air and math.abs(root.AssemblyLinearVelocity.Y) < 12 then
+					local look = root.CFrame.LookVector
+					local flatLook = Vector3.new(look.X, 0, look.Z)
+					if flatLook.Magnitude < 0.1 then flatLook = Vector3.new(0, 0, -1) end
+					lastSafeCFrame[player] = CFrame.lookAt(position + Vector3.new(0, 2.5, 0), position + Vector3.new(0, 2.5, 0) + flatLook.Unit)
+					airStillSince[player] = nil
+				elseif humanoid.FloorMaterial == Enum.Material.Air and root.AssemblyLinearVelocity.Magnitude < 1.5 then
+					airStillSince[player] = airStillSince[player] or os.clock()
+					if os.clock() - airStillSince[player] >= 1.5 then
+						character:PivotTo(recoveryCFrame(player))
+						root.AssemblyLinearVelocity = Vector3.zero
+						root.AssemblyAngularVelocity = Vector3.zero
+						humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+						airStillSince[player] = nil
+					end
+				else
+					airStillSince[player] = nil
+				end
+			end
+		end
+		task.wait(0.2)
+	end
+end)
 
 local remote = ReplicatedStorage:FindFirstChild("PrismoraEvent") or Instance.new("RemoteEvent")
 remote.Name = "PrismoraEvent"

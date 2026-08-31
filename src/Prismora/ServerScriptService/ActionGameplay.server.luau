@@ -26,9 +26,21 @@ local currentPhaseText = "INCURSIONE IN PREPARAZIONE"
 local registerDefeat
 
 local ENEMY_DATA = {
-	Scheggino = { health = 55, speed = 9, damage = 7, range = 5.5, reward = 1, size = 3.2 },
-	Guscione = { health = 170, speed = 5.5, damage = 13, range = 7, reward = 2, size = 5.4 },
-	Monolite = { health = 650, speed = 2.2, damage = 18, range = 18, reward = 8, size = 12 },
+	Scheggino = { health = 55, speed = 9, damage = 7, range = 5.5, reward = 1, size = 3.2, color = Color3.fromRGB(74, 70, 88) },
+	Rapido = { health = 42, speed = 14, damage = 6, range = 5, reward = 1, size = 2.7, color = Color3.fromRGB(69, 114, 145) },
+	Gonfio = { health = 105, speed = 6.2, damage = 11, range = 6.2, reward = 2, size = 4.4, color = Color3.fromRGB(111, 69, 121) },
+	Tessitore = { health = 78, speed = 7.4, damage = 9, range = 9, reward = 2, size = 3.6, color = Color3.fromRGB(58, 112, 98) },
+	Guscione = { health = 170, speed = 5.5, damage = 13, range = 7, reward = 2, size = 5.4, color = Color3.fromRGB(74, 70, 88), armored = true },
+	GuscioneElite = { health = 285, speed = 4.8, damage = 17, range = 7.5, reward = 4, size = 6.4, color = Color3.fromRGB(83, 64, 105), armored = true },
+	Monolite = { health = 650, speed = 2.2, damage = 18, range = 18, reward = 8, size = 12, color = Color3.fromRGB(74, 70, 88) },
+}
+
+local WEAPON_ORDER = { "Scintilla", "Pulsar", "Raggialama", "Frantuma" }
+local WEAPON_DATA = {
+	Scintilla = { damage = 19, finisher = 31, cooldown = 0.31, box = Vector3.new(9, 8, 10), offset = 5 },
+	Pulsar = { damage = 21, finisher = 32, cooldown = 0.48, box = Vector3.new(8, 8, 58), offset = 29 },
+	Raggialama = { damage = 25, finisher = 39, cooldown = 0.38, box = Vector3.new(11, 9, 12), offset = 6 },
+	Frantuma = { damage = 39, finisher = 62, cooldown = 0.72, box = Vector3.new(16, 11, 13), offset = 6.5 },
 }
 
 local function getStat(player, name)
@@ -58,7 +70,9 @@ local function updateHealthDisplay(enemy)
 	local health = enemy:GetAttribute("Health") or 0
 	local maxHealth = enemy:GetAttribute("MaxHealth") or 1
 	if label then
-		label.Text = string.format("%s  %d%%", string.upper(enemy:GetAttribute("Kind") or "SPENTO"), math.max(0, math.ceil((health / maxHealth) * 100)))
+		local percentage = math.max(0, math.ceil((health / maxHealth) * 100))
+		local enemyName = string.upper(enemy:GetAttribute("Kind") or "SPENTO")
+		label.Text = percentage >= 100 and enemyName or string.format("%s %d%%", enemyName, percentage)
 	end
 end
 
@@ -82,7 +96,7 @@ local function createEnemy(kind, position)
 		model,
 		"EnemyRoot",
 		Vector3.new(data.size, data.size, data.size),
-		Color3.fromRGB(74, 70, 88),
+		data.color,
 		Enum.Material.Slate,
 		kind == "Monolite" and Enum.PartType.Block or Enum.PartType.Ball
 	)
@@ -93,9 +107,20 @@ local function createEnemy(kind, position)
 	local core = makePart(model, "WeakCore", coreSize, Color3.fromRGB(255, 122, 47), Enum.Material.Neon, kind == "Monolite" and Enum.PartType.Block or Enum.PartType.Ball)
 	core.CFrame = root.CFrame * CFrame.new(0, 0, -(data.size * 0.52))
 
-	if kind == "Guscione" then
+	if data.armored then
 		local shell = makePart(model, "FrontShell", Vector3.new(5.8, 4.2, 1.2), Color3.fromRGB(107, 100, 120), Enum.Material.Slate)
 		shell.CFrame = root.CFrame * CFrame.new(0, 0, -2.4)
+	elseif kind == "Rapido" then
+		for side = -1, 1, 2 do
+			local fin = makePart(model, "SpeedFin", Vector3.new(0.35, 1.2, 2.8), Color3.fromRGB(70, 224, 255), Enum.Material.Neon)
+			fin.CFrame = root.CFrame * CFrame.new(side * 1.2, 0.3, 0.7) * CFrame.Angles(0, math.rad(side * 20), 0)
+		end
+	elseif kind == "Tessitore" then
+		for index = 1, 4 do
+			local leg = makePart(model, "WebLeg", Vector3.new(0.28, 0.28, 3.2), Color3.fromRGB(127, 232, 196), Enum.Material.Neon)
+			local angle = math.rad((index - 1) * 90 + 45)
+			leg.CFrame = root.CFrame * CFrame.new(math.cos(angle) * 1.7, -0.7, math.sin(angle) * 1.7) * CFrame.Angles(0, -angle, math.rad(18))
+		end
 	elseif kind == "Monolite" then
 		root.Size = Vector3.new(9, 13, 7)
 		for index = 1, 3 do
@@ -108,9 +133,9 @@ local function createEnemy(kind, position)
 	local billboard = Instance.new("BillboardGui")
 	billboard.Name = "EnemyHealth"
 	billboard.AlwaysOnTop = true
-	billboard.MaxDistance = 120
-	billboard.StudsOffset = Vector3.new(0, data.size * 0.8 + 2.2, 0)
-	billboard.Size = UDim2.fromOffset(kind == "Monolite" and 230 or 160, 36)
+	billboard.MaxDistance = kind == "Monolite" and 130 or 64
+	billboard.StudsOffset = Vector3.new(0, data.size * 0.72 + 1.4, 0)
+	billboard.Size = UDim2.fromOffset(kind == "Monolite" and 190 or 105, kind == "Monolite" and 30 or 22)
 	billboard.Parent = root
 
 	local label = Instance.new("TextLabel")
@@ -130,8 +155,8 @@ local function createEnemy(kind, position)
 	return model
 end
 
-local function attachWeapon(character)
-	local previous = character:FindFirstChild("RaggialamaAlba")
+local function attachWeapon(character, weaponName)
+	local previous = character:FindFirstChild("PrismoraWeapon")
 	if previous then
 		previous:Destroy()
 	end
@@ -142,14 +167,15 @@ local function attachWeapon(character)
 	end
 
 	local weapon = Instance.new("Model")
-	weapon.Name = "RaggialamaAlba"
+	weapon.Name = "PrismoraWeapon"
+	weapon:SetAttribute("WeaponName", weaponName)
 	weapon.Parent = character
 
 	local handle = Instance.new("Part")
 	handle.Name = "WeaponHandle"
-	handle.Size = Vector3.new(0.38, 1.25, 0.38)
-	handle.Color = Color3.fromRGB(232, 115, 74)
-	handle.Material = Enum.Material.SmoothPlastic
+	handle.Size = Vector3.new(0.42, weaponName == "Frantuma" and 2.8 or 1.05, 0.42)
+	handle.Color = Color3.fromRGB(39, 42, 58)
+	handle.Material = Enum.Material.Metal
 	handle.CanCollide = false
 	handle.CanTouch = false
 	handle.CanQuery = false
@@ -158,48 +184,66 @@ local function attachWeapon(character)
 	handle.Parent = weapon
 	weapon.PrimaryPart = handle
 
-	local blade = Instance.new("WedgePart")
-	blade.Name = "PrismBlade"
-	blade.Size = Vector3.new(0.28, 3.8, 0.92)
-	blade.Color = Color3.fromRGB(255, 233, 184)
-	blade.Material = Enum.Material.Glass
-	blade.Transparency = 0.18
-	blade.CanCollide = false
-	blade.CanTouch = false
-	blade.CanQuery = false
-	blade.Massless = true
-	blade.CFrame = handle.CFrame * CFrame.new(0, -2.35, 0)
-	blade.Parent = weapon
-
-	local core = Instance.new("Part")
-	core.Name = "PrismCore"
-	core.Size = Vector3.new(0.12, 3.25, 0.18)
-	core.Color = Color3.fromRGB(255, 201, 74)
-	core.Material = Enum.Material.Neon
-	core.CanCollide = false
-	core.CanTouch = false
-	core.CanQuery = false
-	core.Massless = true
-	core.CFrame = blade.CFrame * CFrame.new(0, 0, -0.35)
-	core.Parent = weapon
-
 	local weldHand = Instance.new("WeldConstraint")
 	weldHand.Part0 = hand
 	weldHand.Part1 = handle
 	weldHand.Parent = handle
-	for _, part in { blade, core } do
+
+	local created = {}
+	local function addPiece(name, size, color, material, relative, shape)
+		local part = shape == "Wedge" and Instance.new("WedgePart") or Instance.new("Part")
+		part.Name = name
+		part.Size = size
+		part.Color = color
+		part.Material = material
+		part.CanCollide = false
+		part.CanTouch = false
+		part.CanQuery = false
+		part.Massless = true
+		part.CFrame = handle.CFrame * relative
+		part.Parent = weapon
 		local weld = Instance.new("WeldConstraint")
 		weld.Part0 = handle
 		weld.Part1 = part
 		weld.Parent = part
+		table.insert(created, part)
+		return part
 	end
 
+	local trailSource
+	if weaponName == "Scintilla" then
+		handle.Transparency = 1
+		addPiece("GauntletPalm", Vector3.new(1.15, 1.25, 0.82), Color3.fromRGB(33, 38, 55), Enum.Material.Metal, CFrame.new(0, -0.15, -0.15))
+		addPiece("PrismCore", Vector3.new(0.56, 0.56, 0.22), Color3.fromRGB(70, 224, 255), Enum.Material.Neon, CFrame.new(0, -0.1, -0.62))
+		for finger = -1.5, 1.5, 1 do
+			addPiece("Knuckle", Vector3.new(0.22, 0.38, 0.48), Color3.fromRGB(255, 201, 74), Enum.Material.Metal, CFrame.new(finger * 0.22, -0.8, -0.48))
+		end
+		trailSource = addPiece("ImpactArc", Vector3.new(1.8, 0.16, 0.16), Color3.fromRGB(255, 95, 162), Enum.Material.Neon, CFrame.new(0, -1.2, -0.72))
+	elseif weaponName == "Pulsar" then
+		addPiece("PistolBody", Vector3.new(0.92, 0.82, 2.25), Color3.fromRGB(35, 43, 64), Enum.Material.Metal, CFrame.new(0, 0.08, -1.05))
+		addPiece("UpperRail", Vector3.new(0.38, 0.22, 1.6), Color3.fromRGB(255, 201, 74), Enum.Material.Neon, CFrame.new(0, 0.6, -1.1))
+		addPiece("EnergyCell", Vector3.new(0.62, 0.62, 0.62), Color3.fromRGB(70, 224, 255), Enum.Material.Neon, CFrame.new(0, 0.05, -1.15))
+		trailSource = addPiece("Muzzle", Vector3.new(0.72, 0.72, 0.22), Color3.fromRGB(255, 95, 162), Enum.Material.Neon, CFrame.new(0, 0.08, -2.25))
+	elseif weaponName == "Frantuma" then
+		addPiece("ShaftGrip", Vector3.new(0.7, 0.9, 0.7), Color3.fromRGB(232, 115, 74), Enum.Material.Fabric, CFrame.new(0, -0.6, 0))
+		addPiece("AxeCore", Vector3.new(1.05, 1.05, 0.8), Color3.fromRGB(70, 224, 255), Enum.Material.Neon, CFrame.new(0, -2.1, 0))
+		addPiece("LeftAxeBlade", Vector3.new(0.34, 2.2, 2.3), Color3.fromRGB(214, 228, 255), Enum.Material.Metal, CFrame.new(-0.65, -2.1, 0) * CFrame.Angles(0, 0, math.rad(90)), "Wedge")
+		trailSource = addPiece("RightAxeBlade", Vector3.new(0.34, 2.2, 2.3), Color3.fromRGB(255, 201, 74), Enum.Material.Neon, CFrame.new(0.65, -2.1, 0) * CFrame.Angles(0, 0, math.rad(-90)), "Wedge")
+	else
+		addPiece("PrismGuard", Vector3.new(2.1, 0.3, 0.5), Color3.fromRGB(255, 95, 162), Enum.Material.Metal, CFrame.new(0, -0.9, 0))
+		trailSource = addPiece("PrismBlade", Vector3.new(0.34, 3.55, 1.05), Color3.fromRGB(216, 238, 255), Enum.Material.Glass, CFrame.new(0, -2.75, 0), "Wedge")
+		trailSource.Transparency = 0.08
+		addPiece("BladeCore", Vector3.new(0.14, 3.05, 0.2), Color3.fromRGB(70, 224, 255), Enum.Material.Neon, CFrame.new(0, -2.65, -0.35))
+		addPiece("Pommel", Vector3.new(0.7, 0.7, 0.7), Color3.fromRGB(255, 201, 74), Enum.Material.Neon, CFrame.new(0, 0.72, 0))
+	end
+
+	trailSource = trailSource or handle
 	local topAttachment = Instance.new("Attachment")
-	topAttachment.Position = Vector3.new(0, -1.85, 0)
-	topAttachment.Parent = blade
+	topAttachment.Position = Vector3.new(0, -trailSource.Size.Y * 0.48, 0)
+	topAttachment.Parent = trailSource
 	local bottomAttachment = Instance.new("Attachment")
-	bottomAttachment.Position = Vector3.new(0, 1.85, 0)
-	bottomAttachment.Parent = blade
+	bottomAttachment.Position = Vector3.new(0, trailSource.Size.Y * 0.48, 0)
+	bottomAttachment.Parent = trailSource
 	local trail = Instance.new("Trail")
 	trail.Name = "AttackTrail"
 	trail.Attachment0 = topAttachment
@@ -208,7 +252,7 @@ local function attachWeapon(character)
 	trail.Lifetime = 0.22
 	trail.LightEmission = 0.75
 	trail.Enabled = false
-	trail.Parent = blade
+	trail.Parent = trailSource
 end
 
 local function awardDefeat(player, enemy)
@@ -246,7 +290,8 @@ end
 
 local function damageEnemy(enemy, player, amount)
 	if enemy:GetAttribute("Dead") then return false end
-	if enemy:GetAttribute("Kind") == "Guscione" and enemy.PrimaryPart then
+	local enemyData = ENEMY_DATA[enemy:GetAttribute("Kind")]
+	if enemyData and enemyData.armored and enemy.PrimaryPart then
 		local playerRoot = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 		if playerRoot then
 			local toPlayer = playerRoot.Position - enemy.PrimaryPart.Position
@@ -264,6 +309,14 @@ local function damageEnemy(enemy, player, amount)
 	if root then
 		local original = root.Color
 		root.Color = Color3.fromRGB(255, 230, 170)
+		local playerRoot = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+		if playerRoot and enemy:GetAttribute("Kind") ~= "Monolite" then
+			local knockback = Vector3.new(root.Position.X - playerRoot.Position.X, 0, root.Position.Z - playerRoot.Position.Z)
+			if knockback.Magnitude > 0.1 then
+				enemy:PivotTo(enemy:GetPivot() + (knockback.Unit * (amount >= 35 and 3.2 or 1.35)))
+			end
+		end
+		remote:FireClient(player, "HitImpact", amount, root.Position)
 		task.delay(0.08, function()
 			if root.Parent then root.Color = original end
 		end)
@@ -295,7 +348,7 @@ local function targetsInBox(character, boxSize, forwardOffset)
 end
 
 local function flashWeapon(character, duration)
-	local weapon = character:FindFirstChild("RaggialamaAlba")
+	local weapon = character:FindFirstChild("PrismoraWeapon")
 	local trail = weapon and weapon:FindFirstChild("AttackTrail", true)
 	if trail then
 		trail.Enabled = true
@@ -423,18 +476,20 @@ remote.OnServerEvent:Connect(function(player, action)
 
 	local now = os.clock()
 	if action == "Attack" and now >= state.attack then
-		state.attack = now + 0.38
+		local weaponName = WEAPON_ORDER[state.weaponIndex or 1]
+		local weaponData = WEAPON_DATA[weaponName]
+		state.attack = now + weaponData.cooldown
 		state.combo = (state.combo % 3) + 1
-		local damage = state.combo == 3 and 36 or 23
+		local damage = state.combo == 3 and weaponData.finisher or weaponData.damage
 		local hitCount = 0
-		for _, enemy in targetsInBox(character, Vector3.new(10, 8, 11), 5.5) do
+		for _, enemy in targetsInBox(character, weaponData.box, weaponData.offset) do
 			if damageEnemy(enemy, player, damage) then
 				hitCount += 1
 				addHeroCharge(player, state.combo == 3 and 25 or 18)
 			end
 		end
 		flashWeapon(character, 0.24)
-		remote:FireClient(player, "AttackFeedback", state.combo, hitCount)
+		remote:FireClient(player, "AttackFeedback", state.combo, hitCount, weaponName)
 	elseif action == "Skill" and now >= state.skill then
 		state.skill = now + 7
 		local hitCount = 0
@@ -453,6 +508,12 @@ remote.OnServerEvent:Connect(function(player, action)
 		remote:FireClient(player, "DashFeedback", 1.2)
 	elseif action == "SummonHero" then
 		createSolaris(player)
+	elseif action == "CycleWeapon" and now >= (state.cycle or 0) then
+		state.cycle = now + 0.35
+		state.weaponIndex = ((state.weaponIndex or 1) % #WEAPON_ORDER) + 1
+		local weaponName = WEAPON_ORDER[state.weaponIndex]
+		attachWeapon(character, weaponName)
+		remote:FireClient(player, "WeaponChanged", weaponName, state.weaponIndex, WEAPON_DATA[weaponName].cooldown)
 	end
 end)
 
@@ -462,7 +523,8 @@ local function nearestPlayer(position, maxDistance)
 		local character = player.Character
 		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 		local root = character and character:FindFirstChild("HumanoidRootPart")
-		if humanoid and humanoid.Health > 0 and root then
+		local state = playerState[player]
+		if humanoid and humanoid.Health > 0 and root and (not state or os.clock() >= (state.protectedUntil or 0)) then
 			local distance = (root.Position - position).Magnitude
 			if distance <= maxDistance and (not bestDistance or distance < bestDistance) then
 				bestPlayer, bestRoot, bestDistance = player, root, distance
@@ -470,6 +532,61 @@ local function nearestPlayer(position, maxDistance)
 		end
 	end
 	return bestPlayer, bestRoot, bestDistance
+end
+
+local function balancedTarget(enemy, maxDistance)
+	local loads = {}
+	for _, other in enemies:GetChildren() do
+		local userId = other:GetAttribute("TargetUserId")
+		if userId and userId ~= 0 and not other:GetAttribute("Dead") then
+			loads[userId] = (loads[userId] or 0) + 1
+		end
+	end
+
+	local bestPlayer, bestRoot, bestScore
+	for _, candidate in Players:GetPlayers() do
+		local character = candidate.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		local state = playerState[candidate]
+		if humanoid and humanoid.Health > 0 and root and (not state or os.clock() >= (state.protectedUntil or 0)) then
+			local distance = (root.Position - enemy.PrimaryPart.Position).Magnitude
+			if distance <= maxDistance then
+				local score = distance + ((loads[candidate.UserId] or 0) * 14)
+				if not bestScore or score < bestScore then
+					bestPlayer, bestRoot, bestScore = candidate, root, score
+				end
+			end
+		end
+	end
+	return bestPlayer, bestRoot
+end
+
+local function separationVector(enemy, position)
+	local steering = Vector3.zero
+	for _, other in enemies:GetChildren() do
+		if other ~= enemy and other:IsA("Model") and other.PrimaryPart and not other:GetAttribute("Dead") then
+			local offset = Vector3.new(position.X - other.PrimaryPart.Position.X, 0, position.Z - other.PrimaryPart.Position.Z)
+			local distance = offset.Magnitude
+			if distance > 0.05 and distance < 11 then
+				steering += offset.Unit * ((11 - distance) / 11)
+			elseif distance <= 0.05 then
+				local sign = enemy:GetAttribute("OrbitSign") or 1
+				steering += Vector3.new(sign, 0, -sign)
+			end
+		end
+	end
+	return steering
+end
+
+local function activeAttackers(userId, now)
+	local count = 0
+	for _, other in enemies:GetChildren() do
+		if other:GetAttribute("TargetUserId") == userId and (other:GetAttribute("AttackTokenUntil") or 0) > now then
+			count += 1
+		end
+	end
+	return count
 end
 
 local function bossShockwave(enemy)
@@ -523,22 +640,50 @@ RunService.Heartbeat:Connect(function(deltaTime)
 		if enemy:IsA("Model") and enemy.PrimaryPart and not enemy:GetAttribute("Dead") then
 			local data = ENEMY_DATA[enemy:GetAttribute("Kind")]
 			local position = enemy.PrimaryPart.Position
-			local player, targetRoot, distance = nearestPlayer(position, enemy:GetAttribute("Kind") == "Monolite" and 55 or 70)
-			if player and targetRoot and distance then
+			local now = os.clock()
+			local player, targetRoot
+			local currentUserId = enemy:GetAttribute("TargetUserId") or 0
+			if currentUserId ~= 0 and now < (enemy:GetAttribute("NextTargetUpdate") or 0) then
+				player = Players:GetPlayerByUserId(currentUserId)
+				targetRoot = player and player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+			end
+			if not player or not targetRoot then
+				player, targetRoot = balancedTarget(enemy, enemy:GetAttribute("Kind") == "Monolite" and 70 or 95)
+				enemy:SetAttribute("TargetUserId", player and player.UserId or 0)
+				enemy:SetAttribute("NextTargetUpdate", now + 2.5)
+			end
+			if player and targetRoot then
 				local flatTarget = Vector3.new(targetRoot.Position.X, position.Y, targetRoot.Position.Z)
 				local delta = flatTarget - position
-				if distance > data.range and delta.Magnitude > 0.1 then
-					local newPosition = position + (delta.Unit * (enemy:GetAttribute("MoveSpeed") or data.speed) * step)
-					enemy:PivotTo(CFrame.lookAt(newPosition, newPosition + delta.Unit))
-				elseif os.clock() >= (enemy:GetAttribute("NextAttack") or 0) then
-					enemy:SetAttribute("NextAttack", os.clock() + (enemy:GetAttribute("Kind") == "Monolite" and 2.8 or 1.7))
-					if enemy:GetAttribute("Kind") == "Monolite" then
+				local distance = delta.Magnitude
+				local separation = separationVector(enemy, position)
+				if distance > data.range + 0.8 and distance > 0.1 then
+					local desired = delta.Unit + (separation * 1.35)
+					if desired.Magnitude > 0.1 then
+						local newPosition = position + (desired.Unit * (enemy:GetAttribute("MoveSpeed") or data.speed) * step)
+						enemy:PivotTo(CFrame.lookAt(newPosition, newPosition + desired.Unit))
+					end
+				elseif now >= (enemy:GetAttribute("NextAttack") or 0) then
+					local maxAttackers = 2 + #Players:GetPlayers()
+					if enemy:GetAttribute("Kind") == "Monolite" or activeAttackers(player.UserId, now) < maxAttackers then
+						enemy:SetAttribute("AttackTokenUntil", now + 0.9)
+						enemy:SetAttribute("NextAttack", now + (enemy:GetAttribute("Kind") == "Monolite" and 2.8 or 1.7))
+						if enemy:GetAttribute("Kind") == "Monolite" then
 						bossShockwave(enemy)
-					else
+						else
 						local humanoid = targetRoot.Parent and targetRoot.Parent:FindFirstChildOfClass("Humanoid")
 						if humanoid then
 							humanoid:TakeDamage(data.damage)
 							remote:FireClient(player, "DamageReceived", data.damage, enemy:GetAttribute("Kind"))
+						end
+						end
+					else
+						local tangent = Vector3.new(-delta.Z, 0, delta.X)
+						if tangent.Magnitude > 0.1 then
+							local orbitSign = enemy:GetAttribute("OrbitSign") or 1
+							local desired = (tangent.Unit * orbitSign) + (separation * 1.7)
+							local newPosition = position + (desired.Unit * (enemy:GetAttribute("MoveSpeed") or data.speed) * 0.55 * step)
+							enemy:PivotTo(CFrame.lookAt(newPosition, flatTarget))
 						end
 					end
 				end
@@ -548,18 +693,20 @@ RunService.Heartbeat:Connect(function(deltaTime)
 end)
 
 local function setupPlayer(player)
-	playerState[player] = { attack = 0, skill = 0, dash = 0, combo = 0, heroCharge = 0, heroActive = false }
+	playerState[player] = { attack = 0, skill = 0, dash = 0, cycle = 0, combo = 0, heroCharge = 0, heroActive = false, weaponIndex = 1, protectedUntil = os.clock() + 5 }
 	player.CharacterAdded:Connect(function(character)
+		if playerState[player] then playerState[player].protectedUntil = os.clock() + 5 end
 		local humanoid = character:WaitForChild("Humanoid")
 		humanoid.WalkSpeed = 20
 		humanoid.JumpHeight = 9
 		task.wait(0.4)
-		attachWeapon(character)
-		remote:FireClient(player, "WeaponEquipped")
+		local weaponName = WEAPON_ORDER[playerState[player] and playerState[player].weaponIndex or 1]
+		attachWeapon(character, weaponName)
+		remote:FireClient(player, "WeaponEquipped", weaponName, 1, WEAPON_DATA[weaponName].cooldown)
 		remote:FireClient(player, "RunPhase", currentPhaseText, activeModifier)
 	end)
 	if player.Character then
-		task.defer(attachWeapon, player.Character)
+		task.defer(attachWeapon, player.Character, WEAPON_ORDER[1])
 	end
 end
 
@@ -577,20 +724,31 @@ end
 local function startStage(stage)
 	runState.stage = stage
 	runState.defeats = 0
+	local entries
 	if stage == 1 then
-		announcePhase("ONDATA 1 • SPEZZA GLI SCHEGGINI")
-		createEnemy("Scheggino", combatCenter + Vector3.new(-10, 4, -14))
-		createEnemy("Scheggino", combatCenter + Vector3.new(0, 5, -18))
-		createEnemy("Scheggino", combatCenter + Vector3.new(11, 4, -13))
+		announcePhase("ONDATA 1 • SCHIVA IL BRANCO")
+		entries = { "Scheggino", "Rapido", "Scheggino", "Gonfio", "Rapido", "Tessitore", "Scheggino" }
 	elseif stage == 2 then
-		announcePhase("ONDATA 2 • AGGIRA I GUSCIONI")
-		createEnemy("Scheggino", combatCenter + Vector3.new(-14, 4, -18))
-		createEnemy("Scheggino", combatCenter + Vector3.new(14, 5, -19))
-		createEnemy("Guscione", combatCenter + Vector3.new(-8, 4, -30))
-		createEnemy("Guscione", combatCenter + Vector3.new(9, 4, -31))
+		announcePhase("ONDATA 2 • ROMPI LE CORAZZE")
+		entries = { "Rapido", "Guscione", "Tessitore", "Gonfio", "Guscione", "Scheggino", "GuscioneElite", "Rapido" }
 	elseif stage == 3 then
 		announcePhase("GUARDIANO SPENTO • EVOCA SOLARIS")
-		createEnemy("Monolite", combatCenter + Vector3.new(0, 8, -38))
+		entries = { "Monolite" }
+	end
+	if entries then
+		runState.expectedDefeats = #entries
+		task.spawn(function()
+			for index, kind in entries do
+				local ring = stage == 3 and 38 or (22 + ((index % 2) * 8))
+				local angle = ((index - 1) / #entries) * math.pi * 2
+				local position = combatCenter + Vector3.new(math.cos(angle) * ring, kind == "Monolite" and 8 or 4, math.sin(angle) * ring - 8)
+				local enemy = createEnemy(kind, position)
+				enemy:SetAttribute("OrbitSign", index % 2 == 0 and 1 or -1)
+				enemy:SetAttribute("TargetUserId", 0)
+				enemy:SetAttribute("AttackTokenUntil", 0)
+				task.wait(0.18)
+			end
+		end)
 	end
 end
 
@@ -605,9 +763,9 @@ end
 
 registerDefeat = function(kind)
 	runState.defeats += 1
-	if runState.stage == 1 and runState.defeats >= 3 then
+	if runState.stage == 1 and runState.defeats >= (runState.expectedDefeats or 7) then
 		task.delay(1.2, function() startStage(2) end)
-	elseif runState.stage == 2 and runState.defeats >= 4 then
+	elseif runState.stage == 2 and runState.defeats >= (runState.expectedDefeats or 8) then
 		task.delay(1.5, function() startStage(3) end)
 	elseif runState.stage == 3 and kind == "Monolite" then
 		runState.stage = 4
@@ -619,4 +777,4 @@ end
 
 task.delay(1, beginRun)
 
-print("PRISMORA_ACTION_READY enemies=5 weapon=RaggialamaAlba")
+print("PRISMORA_ACTION_READY enemies=16 separation=on attack_tokens=on")

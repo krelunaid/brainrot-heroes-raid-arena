@@ -4,7 +4,8 @@
     "$className": "DataModel",
     "Workspace": {
       "$properties": {
-        "StreamingEnabled": true,
+        "StreamingEnabled": false,
+        "FallenPartsDestroyHeight": -500,
         "Gravity": 196.2
       }
     },

@@ -1,5 +1,6 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local StarterGui = game:GetService("StarterGui")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
@@ -18,6 +19,13 @@ screen.ResetOnSpawn = false
 screen.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screen.Parent = playerGui
 
+task.spawn(function()
+	for _ = 1, 10 do
+		if pcall(function() StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList, false) end) then break end
+		task.wait(0.25)
+	end
+end)
+
 local function round(parent, radius)
 	local corner = Instance.new("UICorner")
 	corner.CornerRadius = UDim.new(0, radius)
@@ -35,8 +43,8 @@ end
 local header = Instance.new("Frame")
 header.Name = "Header"
 header.AnchorPoint = Vector2.new(0.5, 0)
-header.Position = UDim2.fromScale(0.5, 0.026)
-header.Size = UDim2.fromOffset(410, 88)
+header.Position = UDim2.new(0.5, 0, 0, 10)
+header.Size = UDim2.fromOffset(520, 58)
 header.BackgroundColor3 = Color3.fromRGB(15, 20, 36)
 header.BackgroundTransparency = 0.08
 header.Parent = screen
@@ -45,10 +53,10 @@ stroke(header, Color3.fromRGB(70, 224, 255), 0.32, 2)
 
 local title = Instance.new("TextLabel")
 title.BackgroundTransparency = 1
-title.Position = UDim2.fromOffset(22, 10)
-title.Size = UDim2.new(1, -44, 0, 34)
+title.Position = UDim2.fromOffset(18, 8)
+title.Size = UDim2.fromOffset(150, 42)
 title.Font = Enum.Font.GothamBlack
-title.Text = "PRISMORA: HERO RUSH"
+title.Text = "PRISMORA"
 title.TextColor3 = Color3.fromRGB(255, 255, 255)
 title.TextScaled = true
 title.TextXAlignment = Enum.TextXAlignment.Left
@@ -56,8 +64,8 @@ title.Parent = header
 
 local objective = Instance.new("TextLabel")
 objective.BackgroundTransparency = 1
-objective.Position = UDim2.fromOffset(22, 48)
-objective.Size = UDim2.new(1, -44, 0, 24)
+objective.Position = UDim2.fromOffset(180, 9)
+objective.Size = UDim2.new(1, -195, 0, 40)
 objective.Font = Enum.Font.GothamMedium
 objective.Text = "Prendi la Raggialama e attacca gli Spenti"
 objective.TextColor3 = Color3.fromRGB(127, 232, 196)
@@ -67,9 +75,9 @@ objective.Parent = header
 
 local heroMeter = Instance.new("Frame")
 heroMeter.Name = "HeroMeter"
-heroMeter.AnchorPoint = Vector2.new(0.5, 0)
-heroMeter.Position = UDim2.fromScale(0.5, 0.122)
-heroMeter.Size = UDim2.fromOffset(330, 28)
+heroMeter.AnchorPoint = Vector2.new(0.5, 1)
+heroMeter.Position = UDim2.new(0.5, 0, 1, -22)
+heroMeter.Size = UDim2.fromOffset(310, 25)
 heroMeter.BackgroundColor3 = Color3.fromRGB(38, 42, 58)
 heroMeter.BackgroundTransparency = 0.08
 heroMeter.ClipsDescendants = true
@@ -97,7 +105,7 @@ heroText.Parent = heroMeter
 local statusToast = Instance.new("TextLabel")
 statusToast.Name = "StatusToast"
 statusToast.AnchorPoint = Vector2.new(0.5, 0.5)
-statusToast.Position = UDim2.fromScale(0.5, 0.67)
+statusToast.Position = UDim2.fromScale(0.5, 0.2)
 statusToast.Size = UDim2.fromOffset(430, 58)
 statusToast.BackgroundColor3 = Color3.fromRGB(16, 20, 35)
 statusToast.BackgroundTransparency = 1
@@ -190,8 +198,18 @@ local hero = makeActionButton(
 hero.Active = false
 hero.BackgroundTransparency = 0.4
 
+local weapon = makeActionButton(
+	"Weapon",
+	touch and "ARMA" or "F ARMA",
+	Color3.fromRGB(176, 118, 255),
+	touch and 68 or 58,
+	UDim2.new(0, touch and 116 or 96, 1, touch and -190 or -32),
+	Vector2.new(0, 1)
+)
+
 local cooldowns = { Attack = 0, Skill = 0, Dash = 0 }
 local heroReady = false
+local weaponCooldown = 0.31
 local baseLabels = {
 	Attack = touch and "ATTACCA" or "LMB",
 	Skill = touch and "POTERE" or "Q",
@@ -247,7 +265,7 @@ end
 local function requestAttack()
 	if cooldowns.Attack > os.clock() then return end
 	aimAssist(30, 0.34)
-	startCooldown(attack, "Attack", 0.38)
+	startCooldown(attack, "Attack", weaponCooldown)
 	combatRemote:FireServer("Attack")
 end
 
@@ -273,10 +291,15 @@ local function requestHero()
 	combatRemote:FireServer("SummonHero")
 end
 
+local function requestWeapon()
+	combatRemote:FireServer("CycleWeapon")
+end
+
 attack.Activated:Connect(requestAttack)
 skill.Activated:Connect(requestSkill)
 dash.Activated:Connect(requestDash)
 hero.Activated:Connect(requestHero)
+weapon.Activated:Connect(requestWeapon)
 
 UserInputService.InputBegan:Connect(function(input, processed)
 	if processed then return end
@@ -288,6 +311,8 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		requestDash()
 	elseif input.KeyCode == Enum.KeyCode.E or input.KeyCode == Enum.KeyCode.ButtonY then
 		requestHero()
+	elseif input.KeyCode == Enum.KeyCode.F or input.KeyCode == Enum.KeyCode.DPadRight then
+		requestWeapon()
 	end
 end)
 
@@ -297,14 +322,25 @@ local function pulseHeader(color)
 	TweenService:Create(header, TweenInfo.new(0.3), { BackgroundColor3 = original }):Play()
 end
 
-combatRemote.OnClientEvent:Connect(function(action, value, extra)
+combatRemote.OnClientEvent:Connect(function(action, value, extra, detail)
 	if action == "WeaponEquipped" then
-		objective.Text = touch and "Premi ATTACCA: sconfiggi 3 Spenti" or "Clic sinistro: sconfiggi 3 Spenti"
-		showToast("RAGGIALAMA ALBA EQUIPAGGIATA", Color3.fromRGB(255, 201, 74))
+		weaponCooldown = detail or weaponCooldown
+		objective.Text = touch and "ATTACCA • DASH • cambia ARMA" or "LMB attacca • Q potere • F cambia arma"
+		showToast(string.upper(value or "SCINTILLA") .. " EQUIPAGGIATA", Color3.fromRGB(255, 201, 74))
+	elseif action == "WeaponChanged" then
+		weaponCooldown = detail or weaponCooldown
+		showToast("ARMA " .. tostring(extra or 1) .. "/4 • " .. string.upper(value or "SCINTILLA"), Color3.fromRGB(176, 118, 255))
 	elseif action == "AttackFeedback" then
 		if extra and extra > 0 then
 			showToast(value == 3 and "COMBO! COLPO SPEZZAGUARDIA" or "COLPITO!", Color3.fromRGB(255, 233, 184))
 			pulseHeader(Color3.fromRGB(113, 82, 48))
+		end
+	elseif action == "HitImpact" then
+		local camera = workspace.CurrentCamera
+		if camera then
+			local original = camera.CFrame
+			camera.CFrame = original * CFrame.new((math.random() - 0.5) * 0.12, (math.random() - 0.5) * 0.09, 0)
+			TweenService:Create(camera, TweenInfo.new(0.09), { CFrame = original }):Play()
 		end
 	elseif action == "SkillFeedback" then
 		showToast("RIFRAZIONE!", Color3.fromRGB(255, 95, 162))
@@ -331,22 +367,22 @@ combatRemote.OnClientEvent:Connect(function(action, value, extra)
 		heroText.Text = touch and "SOLARIS PRONTO • PREMI HERO" or "SOLARIS PRONTO • PREMI E"
 		showToast("SOLARIS È PRONTO!", Color3.fromRGB(255, 201, 74))
 	elseif action == "HeroSummoned" then
-		title.Text = "SOLARIS SCATENATO"
+		title.Text = "SOLARIS"
 		objective.Text = string.upper(value or "UN HERO") .. " HA RISVEGLIATO SOLARIS"
 		showToast("RISVEGLIO COLOSSALE!", Color3.fromRGB(255, 240, 184))
 		task.delay(8, function()
-			if title.Parent then title.Text = "PRISMORA: HERO RUSH" end
+			if title.Parent then title.Text = "PRISMORA" end
 		end)
 	elseif action == "RunModifier" then
 		showToast("MODIFICATORE • " .. string.upper(value or "SCONOSCIUTO"), Color3.fromRGB(176, 118, 255))
 	elseif action == "RunPhase" then
-		title.Text = "INCURSIONE PRISMORA"
+		title.Text = "ONDATA"
 		objective.Text = value or "COMBATTI"
 		if extra and extra ~= "NESSUNO" then
 			showToast(string.upper(extra), Color3.fromRGB(176, 118, 255))
 		end
 	elseif action == "RunComplete" then
-		title.Text = "INCURSIONE COMPLETATA"
+		title.Text = "VITTORIA"
 		objective.Text = "RICOMPENSA OTTENUTA • NUOVA RUN TRA 8s"
 		showToast("VITTORIA! TUTTI RICEVONO FRAMMENTI", Color3.fromRGB(127, 232, 196))
 	end
@@ -356,7 +392,7 @@ questRemote.OnClientEvent:Connect(function(action, value)
 	if action == "CrystalCollected" then
 		pulseHeader(Color3.fromRGB(87, 80, 133))
 	elseif action == "HeroUnlocked" then
-		title.Text = "HERO RISVEGLIATO"
+		title.Text = "RISVEGLIO"
 		objective.Text = "Ora affronta il Monolite e conquista frammenti"
 		showToast("RISVEGLIO PRISMATICO!", Color3.fromRGB(255, 95, 162))
 	end
@@ -368,9 +404,9 @@ task.spawn(function()
 	local fragments = stats and stats:WaitForChild("Frammenti", 10)
 	if defeats then
 		local function updateMission()
-			if defeats.Value < 3 then
-				objective.Text = string.format("Sconfiggi gli Spenti  •  %d/3", defeats.Value)
-			elseif defeats.Value < 5 then
+			if defeats.Value < 7 then
+				objective.Text = string.format("Sconfiggi il branco  •  %d/7", defeats.Value)
+			elseif defeats.Value < 15 then
 				objective.Text = "Usa POTERE e DASH contro il Guscione"
 			else
 				objective.Text = string.format("Affronta il MONOLITE  •  %d frammenti", fragments and fragments.Value or 0)
@@ -383,5 +419,28 @@ task.spawn(function()
 end)
 
 task.delay(0.8, function()
-	showToast(touch and "MUOVITI • ATTACCA • DASH" or "WASD • LMB ATTACCA • Q POTERE • SHIFT DASH", Color3.fromRGB(70, 224, 255))
+	showToast(touch and "ATTACCA • POTERE • DASH • ARMA" or "WASD • LMB • Q • SHIFT • F CAMBIA ARMA", Color3.fromRGB(70, 224, 255))
 end)
+
+local function fitHud()
+	local camera = workspace.CurrentCamera
+	if not camera then return end
+	local width = camera.ViewportSize.X
+	if width < 700 then
+		header.Size = UDim2.fromOffset(math.max(310, width - 24), 54)
+		title.Size = UDim2.fromOffset(105, 38)
+		objective.Position = UDim2.fromOffset(128, 8)
+		objective.Size = UDim2.new(1, -140, 0, 38)
+		statusToast.Size = UDim2.fromOffset(math.max(290, width - 40), 52)
+	else
+		header.Size = UDim2.fromOffset(520, 58)
+		title.Size = UDim2.fromOffset(150, 42)
+		objective.Position = UDim2.fromOffset(180, 9)
+		objective.Size = UDim2.new(1, -195, 0, 40)
+	end
+end
+
+fitHud()
+if workspace.CurrentCamera then
+	workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(fitHud)
+end
