@@ -373,6 +373,8 @@ combatRemote.OnClientEvent:Connect(function(action, value, extra, detail)
 	elseif action == "DamageReceived" then
 		showToast(string.format("-%d  SCHIVA!", value), Color3.fromRGB(255, 122, 47))
 		pulseHeader(Color3.fromRGB(130, 55, 35))
+	elseif action == "PlayerDown" then
+		showToast("KO • RIENTRI SUBITO NELL'AZIONE", Color3.fromRGB(255, 122, 47))
 	elseif action == "ArmorBlocked" then
 		showToast("CORAZZA! DASH E COLPISCI DA DIETRO", Color3.fromRGB(255, 122, 47))
 	elseif action == "BossTelegraph" then
@@ -409,10 +411,11 @@ combatRemote.OnClientEvent:Connect(function(action, value, extra, detail)
 		local stage = value or 1
 		local defeated = extra or 0
 		local total = detail or 0
+		local remaining = math.max(0, total - defeated)
 		if stage == 1 then
-			objective.Text = string.format("ONDATA 1 • NEMICI %d/%d", defeated, total)
+			objective.Text = string.format("ONDATA 1 • RESTANO %d", remaining)
 		elseif stage == 2 then
-			objective.Text = string.format("ONDATA 2 • CORAZZE %d/%d", defeated, total)
+			objective.Text = string.format("ONDATA 2 • RESTANO %d", remaining)
 		else
 			objective.Text = "MONOLITE • COLPISCI E CARICA SOLARIS"
 		end

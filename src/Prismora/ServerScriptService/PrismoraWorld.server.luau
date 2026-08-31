@@ -148,8 +148,10 @@ local function createBridge(parent, fromData, toData, accentColor)
 	local direction = flatDelta.Unit
 	local fromRadius = math.min(fromData.size.X, fromData.size.Y) * 0.36
 	local toRadius = math.min(toData.size.X, toData.size.Y) * 0.36
-	local startPoint = fromData.center + (direction * fromRadius) + Vector3.new(0, 1.3, 0)
-	local endPoint = toData.center - (direction * toRadius) + Vector3.new(0, 1.3, 0)
+	-- The deck top sits only half a stud above each island surface. The old
+	-- three-stud lip looked like a bridge but stopped a Humanoid at the landing.
+	local startPoint = fromData.center + (direction * fromRadius) + Vector3.new(0, -1.2, 0)
+	local endPoint = toData.center - (direction * toRadius) + Vector3.new(0, -1.2, 0)
 	local length = (endPoint - startPoint).Magnitude
 	local segmentCount = math.max(2, math.ceil(length / 36))
 
@@ -179,9 +181,10 @@ local function createBridge(parent, fromData, toData, accentColor)
 			rail.CanCollide = false
 			rail.Material = Enum.Material.Neon
 			rail.Color = accentColor
-			rail.Transparency = 0.12
-			rail.Size = Vector3.new(0.55, 1.25, segmentLength)
-			rail.CFrame = bridgeCFrame * CFrame.new(side * 11.1, 2.0, 0)
+			-- A thin edge light marks the route without looking like a solid cyan wall.
+			rail.Transparency = 0.58
+			rail.Size = Vector3.new(0.28, 0.42, segmentLength)
+			rail.CFrame = bridgeCFrame * CFrame.new(side * 11.35, 1.82, 0)
 			rail.Parent = parent
 
 			local barrier = Instance.new("Part")
@@ -349,11 +352,11 @@ local function createArchipelago(world)
 		createDistrictBeacon(districtFolder, district, districtData.center + Vector3.new(0, 2, 0))
 		workspace:SetAttribute("Prismora" .. district.name .. "Center", districtData.center + Vector3.new(0, 2, 0))
 	end
-	-- Gate 1 safety test: keep every edge closed. Bridge openings are restored
-	-- one at a time only after the floor, recovery and knockback probes pass.
-	createSafetyPerimeter(world, centralData, {}, Color3.fromRGB(118, 255, 235))
+	-- Keep the outside edges safe while leaving every real bridge entrance open.
+	-- Closing the whole perimeter made the visible bridge impossible to enter.
+	createSafetyPerimeter(world, centralData, centralOpenings, Color3.fromRGB(118, 255, 235))
 	for _, perimeter in districtPerimeters do
-		createSafetyPerimeter(districtFolder, perimeter.data, {}, perimeter.color)
+		createSafetyPerimeter(districtFolder, perimeter.data, perimeter.openings, perimeter.color)
 	end
 end
 

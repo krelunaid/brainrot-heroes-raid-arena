@@ -47,20 +47,62 @@ if typeof(spawnPosition) == "Vector3" then
 	end
 end
 
+local bridgeDecks = 0
+local bridgeBlockers = {}
+local perimeterBarriers = {}
+for _, item in world:GetDescendants() do
+	if item:IsA("BasePart") and string.find(item.Name, "SafetyBarrier", 1, true) and item.Name ~= "BridgeSafetyBarrier" then
+		table.insert(perimeterBarriers, item)
+	end
+end
+for _, item in world:GetDescendants() do
+	if item:IsA("BasePart") and item.Name == "CrystalBridgeDeck" then
+		bridgeDecks += 1
+		-- CanQuery is deliberately false on invisible barriers, so spatial queries
+		-- cannot audit them. Sample the playable bridge centreline directly in
+		-- every barrier's local space instead.
+		for sampleIndex = -5, 5 do
+			local corridorPoint = item.CFrame:PointToWorldSpace(Vector3.new(0, 4, (item.Size.Z * 0.45) * (sampleIndex / 5)))
+			for _, barrier in perimeterBarriers do
+				local localPoint = barrier.CFrame:PointToObjectSpace(corridorPoint)
+				local half = barrier.Size * 0.5
+				if math.abs(localPoint.X) <= half.X and math.abs(localPoint.Y) <= half.Y and math.abs(localPoint.Z) <= half.Z then
+					bridgeBlockers[barrier:GetFullName()] = true
+				end
+			end
+		end
+	end
+end
+
+local bridgeBlockerCount = 0
+for _ in bridgeBlockers do bridgeBlockerCount += 1 end
+
 print(string.format(
-	"PRISMORA_COLLISION_AUDIT surfaces=%d samples=%d holes=%d maxDeviation=%.3f visibleCyan=%d",
+	"PRISMORA_COLLISION_AUDIT surfaces=%d samples=%d holes=%d maxDeviation=%.3f visibleCyan=%d bridgeDecks=%d bridgeBlockers=%d",
 	#surfaces,
 	samples,
 	holes,
 	maxDeviation,
-	#visibleCyan
+	#visibleCyan,
+	bridgeDecks,
+	bridgeBlockerCount
 ))
 if #visibleCyan > 0 then
 	warn("PRISMORA_VISIBLE_CYAN " .. table.concat(visibleCyan, " | "))
 end
+if bridgeBlockerCount > 0 then
+	local blockerNames = {}
+	for name in bridgeBlockers do table.insert(blockerNames, name) end
+	warn("PRISMORA_BRIDGE_BLOCKED " .. table.concat(blockerNames, " | "))
+end
 
--- Gate 1 character probes. They deliberately stress the same failure modes
--- reported during play: spawning below the map and being launched over an edge.
+-- Gate 1 character probes are opt-in. They deliberately teleport and launch the
+-- character, so running them during a normal playtest looks like a gameplay bug.
+if workspace:GetAttribute("PrismoraRunCharacterAudit") ~= true then
+	print("PRISMORA_CHARACTER_AUDIT skipped=normal_playtest")
+	return
+end
+
 local probeStarted = false
 local function waitForSafeCharacter(root, humanoid, timeout)
 	local started = os.clock()

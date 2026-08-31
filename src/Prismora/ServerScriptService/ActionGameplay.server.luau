@@ -3,6 +3,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 
+Players.RespawnTime = 2
+
 repeat task.wait(0.1) until workspace:GetAttribute("PrismoraReady")
 
 local remote = ReplicatedStorage:FindFirstChild("PrismoraCombat") or Instance.new("RemoteEvent")
@@ -75,6 +77,18 @@ local function updateHealthDisplay(enemy)
 		local percentage = math.max(0, math.ceil((health / maxHealth) * 100))
 		local enemyName = string.upper(enemy:GetAttribute("Kind") or "SPENTO")
 		label.Text = percentage >= 100 and enemyName or string.format("%s %d%%", enemyName, percentage)
+		if billboard and billboard:IsA("BillboardGui") then
+			billboard.Enabled = enemy:GetAttribute("Kind") == "Monolite" or health < maxHealth
+			if health < maxHealth and health > 0 then
+				local token = os.clock()
+				enemy:SetAttribute("HealthLabelToken", token)
+				task.delay(1.5, function()
+					if enemy.Parent and enemy:GetAttribute("HealthLabelToken") == token and billboard.Parent then
+						billboard.Enabled = false
+					end
+				end)
+			end
+		end
 	end
 end
 
@@ -134,10 +148,11 @@ local function createEnemy(kind, position)
 
 	local billboard = Instance.new("BillboardGui")
 	billboard.Name = "EnemyHealth"
-	billboard.AlwaysOnTop = true
-	billboard.MaxDistance = kind == "Monolite" and 130 or 64
+	billboard.AlwaysOnTop = false
+	billboard.MaxDistance = kind == "Monolite" and 130 or 34
 	billboard.StudsOffset = Vector3.new(0, data.size * 0.72 + 1.4, 0)
-	billboard.Size = UDim2.fromOffset(kind == "Monolite" and 190 or 105, kind == "Monolite" and 30 or 22)
+	billboard.Size = UDim2.fromOffset(kind == "Monolite" and 190 or 82, kind == "Monolite" and 30 or 18)
+	billboard.Enabled = kind == "Monolite"
 	billboard.Parent = root
 
 	local label = Instance.new("TextLabel")
@@ -201,6 +216,11 @@ local function attachWeapon(character, weaponName)
 	local created = {}
 	local function addPiece(name, size, color, material, relative, shape)
 		local part = shape == "Wedge" and Instance.new("WedgePart") or Instance.new("Part")
+		if shape == "Ball" then
+			part.Shape = Enum.PartType.Ball
+		elseif shape == "Cylinder" then
+			part.Shape = Enum.PartType.Cylinder
+		end
 		part.Name = name
 		part.Size = size
 		part.Color = color
@@ -222,28 +242,51 @@ local function attachWeapon(character, weaponName)
 	local trailSource
 	if weaponName == "Scintilla" then
 		handle.Transparency = 1
-		addPiece("GauntletPalm", Vector3.new(1.15, 1.25, 0.82), Color3.fromRGB(33, 38, 55), Enum.Material.Metal, CFrame.new(0, -0.15, -0.15))
-		addPiece("PrismCore", Vector3.new(0.56, 0.56, 0.22), Color3.fromRGB(70, 224, 255), Enum.Material.Neon, CFrame.new(0, -0.1, -0.62))
-		for finger = -1.5, 1.5, 1 do
-			addPiece("Knuckle", Vector3.new(0.22, 0.38, 0.48), Color3.fromRGB(255, 201, 74), Enum.Material.Metal, CFrame.new(finger * 0.22, -0.8, -0.48))
+		addPiece("GauntletPalm", Vector3.new(1.22, 1.34, 0.88), Color3.fromRGB(49, 58, 84), Enum.Material.Metal, CFrame.new(0, -0.12, -0.18))
+		addPiece("WristCuff", Vector3.new(1.42, 0.48, 1.05), Color3.fromRGB(255, 95, 162), Enum.Material.Metal, CFrame.new(0, 0.78, -0.02))
+		addPiece("PrismCore", Vector3.new(0.62, 0.62, 0.28), Color3.fromRGB(70, 224, 255), Enum.Material.Neon, CFrame.new(0, -0.05, -0.66), "Ball")
+		for side = -1, 1, 2 do
+			addPiece("SidePlate", Vector3.new(0.24, 1.05, 0.9), Color3.fromRGB(214, 228, 255), Enum.Material.Metal, CFrame.new(side * 0.68, -0.08, -0.05) * CFrame.Angles(0, 0, math.rad(side * 12)))
 		end
-		trailSource = addPiece("ImpactArc", Vector3.new(1.8, 0.16, 0.16), Color3.fromRGB(255, 95, 162), Enum.Material.Neon, CFrame.new(0, -1.2, -0.72))
+		for finger = -1.5, 1.5, 1 do
+			addPiece("Knuckle", Vector3.new(0.22, 0.42, 0.52), finger % 2 == 0.5 and Color3.fromRGB(70, 224, 255) or Color3.fromRGB(255, 201, 74), Enum.Material.Neon, CFrame.new(finger * 0.24, -0.82, -0.5))
+		end
+		trailSource = addPiece("ImpactArc", Vector3.new(1.92, 0.18, 0.18), Color3.fromRGB(255, 95, 162), Enum.Material.Neon, CFrame.new(0, -1.22, -0.72))
 	elseif weaponName == "Pulsar" then
-		addPiece("PistolBody", Vector3.new(0.92, 0.82, 2.25), Color3.fromRGB(35, 43, 64), Enum.Material.Metal, CFrame.new(0, 0.08, -1.05))
-		addPiece("UpperRail", Vector3.new(0.38, 0.22, 1.6), Color3.fromRGB(255, 201, 74), Enum.Material.Neon, CFrame.new(0, 0.6, -1.1))
-		addPiece("EnergyCell", Vector3.new(0.62, 0.62, 0.62), Color3.fromRGB(70, 224, 255), Enum.Material.Neon, CFrame.new(0, 0.05, -1.15))
-		trailSource = addPiece("Muzzle", Vector3.new(0.72, 0.72, 0.22), Color3.fromRGB(255, 95, 162), Enum.Material.Neon, CFrame.new(0, 0.08, -2.25))
+		handle.Color = Color3.fromRGB(32, 37, 54)
+		addPiece("PistolBody", Vector3.new(1.06, 0.94, 2.55), Color3.fromRGB(49, 58, 84), Enum.Material.Metal, CFrame.new(0, 0.05, -1.18))
+		addPiece("BarrelShroud", Vector3.new(0.78, 0.72, 1.75), Color3.fromRGB(214, 228, 255), Enum.Material.Metal, CFrame.new(0, 0.12, -2.45))
+		addPiece("UpperRail", Vector3.new(0.42, 0.2, 2.45), Color3.fromRGB(255, 201, 74), Enum.Material.Neon, CFrame.new(0, 0.67, -1.62))
+		addPiece("RearSight", Vector3.new(0.74, 0.42, 0.2), Color3.fromRGB(255, 95, 162), Enum.Material.Neon, CFrame.new(0, 0.88, -0.55))
+		addPiece("EnergyCell", Vector3.new(0.7, 0.7, 0.7), Color3.fromRGB(70, 224, 255), Enum.Material.Neon, CFrame.new(0, 0.02, -1.25), "Ball")
+		for side = -1, 1, 2 do
+			addPiece("SideCell", Vector3.new(0.28, 0.5, 1.2), side < 0 and Color3.fromRGB(176, 118, 255) or Color3.fromRGB(255, 95, 162), Enum.Material.Neon, CFrame.new(side * 0.64, 0.04, -1.55))
+		end
+		addPiece("TriggerGuard", Vector3.new(0.68, 0.18, 0.52), Color3.fromRGB(255, 201, 74), Enum.Material.Metal, CFrame.new(0, -0.58, -0.55))
+		trailSource = addPiece("Muzzle", Vector3.new(0.86, 0.86, 0.26), Color3.fromRGB(255, 95, 162), Enum.Material.Neon, CFrame.new(0, 0.12, -3.35), "Cylinder")
 	elseif weaponName == "Frantuma" then
-		addPiece("ShaftGrip", Vector3.new(0.7, 0.9, 0.7), Color3.fromRGB(232, 115, 74), Enum.Material.Fabric, CFrame.new(0, -0.6, 0))
-		addPiece("AxeCore", Vector3.new(1.05, 1.05, 0.8), Color3.fromRGB(70, 224, 255), Enum.Material.Neon, CFrame.new(0, -2.1, 0))
-		addPiece("LeftAxeBlade", Vector3.new(0.34, 2.2, 2.3), Color3.fromRGB(214, 228, 255), Enum.Material.Metal, CFrame.new(-0.65, -2.1, 0) * CFrame.Angles(0, 0, math.rad(90)), "Wedge")
-		trailSource = addPiece("RightAxeBlade", Vector3.new(0.34, 2.2, 2.3), Color3.fromRGB(255, 201, 74), Enum.Material.Neon, CFrame.new(0.65, -2.1, 0) * CFrame.Angles(0, 0, math.rad(-90)), "Wedge")
+		handle.Color = Color3.fromRGB(47, 51, 70)
+		addPiece("ShaftGrip", Vector3.new(0.72, 1.2, 0.72), Color3.fromRGB(232, 115, 74), Enum.Material.Fabric, CFrame.new(0, -0.45, 0))
+		addPiece("ShaftRing", Vector3.new(0.9, 0.24, 0.9), Color3.fromRGB(255, 201, 74), Enum.Material.Neon, CFrame.new(0, -1.25, 0))
+		addPiece("HeadSpine", Vector3.new(3.6, 0.58, 0.84), Color3.fromRGB(49, 58, 84), Enum.Material.Metal, CFrame.new(0, -2.32, 0))
+		addPiece("AxeCore", Vector3.new(1.15, 1.15, 0.92), Color3.fromRGB(70, 224, 255), Enum.Material.Neon, CFrame.new(0, -2.32, 0), "Ball")
+		addPiece("LeftAxeBlade", Vector3.new(0.38, 2.45, 2.5), Color3.fromRGB(214, 228, 255), Enum.Material.Metal, CFrame.new(-1.18, -2.32, 0) * CFrame.Angles(0, 0, math.rad(90)), "Wedge")
+		trailSource = addPiece("RightAxeBlade", Vector3.new(0.38, 2.45, 2.5), Color3.fromRGB(255, 201, 74), Enum.Material.Neon, CFrame.new(1.18, -2.32, 0) * CFrame.Angles(0, 0, math.rad(-90)), "Wedge")
+		addPiece("BackSpike", Vector3.new(0.55, 1.4, 1.5), Color3.fromRGB(255, 95, 162), Enum.Material.Neon, CFrame.new(0, -3.18, 0) * CFrame.Angles(0, 0, math.rad(90)), "Wedge")
 	else
-		addPiece("PrismGuard", Vector3.new(2.1, 0.3, 0.5), Color3.fromRGB(255, 95, 162), Enum.Material.Metal, CFrame.new(0, -0.9, 0))
-		trailSource = addPiece("PrismBlade", Vector3.new(0.34, 3.55, 1.05), Color3.fromRGB(216, 238, 255), Enum.Material.Glass, CFrame.new(0, -2.75, 0), "Wedge")
+		handle.Color = Color3.fromRGB(31, 35, 52)
+		addPiece("PrismGuard", Vector3.new(2.35, 0.32, 0.58), Color3.fromRGB(255, 95, 162), Enum.Material.Metal, CFrame.new(0, -0.92, 0))
+		for side = -1, 1, 2 do
+			addPiece("GuardWing", Vector3.new(0.34, 0.95, 1.1), side < 0 and Color3.fromRGB(176, 118, 255) or Color3.fromRGB(255, 201, 74), Enum.Material.Neon, CFrame.new(side * 1.02, -1.08, 0) * CFrame.Angles(0, 0, math.rad(side * 38)), "Wedge")
+		end
+		trailSource = addPiece("PrismBlade", Vector3.new(0.42, 4.05, 1.16), Color3.fromRGB(216, 238, 255), Enum.Material.Glass, CFrame.new(0, -3.0, 0), "Wedge")
 		trailSource.Transparency = 0.08
-		addPiece("BladeCore", Vector3.new(0.14, 3.05, 0.2), Color3.fromRGB(70, 224, 255), Enum.Material.Neon, CFrame.new(0, -2.65, -0.35))
-		addPiece("Pommel", Vector3.new(0.7, 0.7, 0.7), Color3.fromRGB(255, 201, 74), Enum.Material.Neon, CFrame.new(0, 0.72, 0))
+		addPiece("BladeCore", Vector3.new(0.16, 3.55, 0.25), Color3.fromRGB(70, 224, 255), Enum.Material.Neon, CFrame.new(0, -2.9, -0.38))
+		addPiece("BladeEdge", Vector3.new(0.12, 3.55, 0.72), Color3.fromRGB(255, 201, 74), Enum.Material.Neon, CFrame.new(0.24, -2.92, 0.02))
+		for rune = 1, 3 do
+			addPiece("BladeRune", Vector3.new(0.48, 0.12, 0.18), Color3.fromRGB(255, 95, 162), Enum.Material.Neon, CFrame.new(0, -1.8 - (rune * 0.72), -0.51) * CFrame.Angles(0, 0, math.rad(rune % 2 == 0 and 22 or -22)))
+		end
+		addPiece("Pommel", Vector3.new(0.76, 0.76, 0.76), Color3.fromRGB(255, 201, 74), Enum.Material.Neon, CFrame.new(0, 0.72, 0), "Ball")
 	end
 
 	trailSource = trailSource or handle
@@ -655,8 +698,16 @@ local function bossShockwave(enemy)
 			local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 			local root = character and character:FindFirstChild("HumanoidRootPart")
 			if humanoid and root and (root.Position - origin).Magnitude <= 24 then
-				humanoid:TakeDamage(18)
-				remote:FireClient(player, "DamageReceived", 18, "Monolite")
+				local state = playerState[player]
+				local now = os.clock()
+				if not state or now >= (state.nextDamage or 0) then
+					if state then
+						state.nextDamage = now + 0.65
+						state.lastDamage = now
+					end
+					humanoid:TakeDamage(18)
+					remote:FireClient(player, "DamageReceived", 18, "Monolite")
+				end
 			end
 		end
 		task.delay(0.4, function() if warning.Parent then warning:Destroy() end end)
@@ -698,7 +749,7 @@ RunService.Heartbeat:Connect(function(deltaTime)
 						enemy:PivotTo(CFrame.lookAt(newPosition, newPosition + desired.Unit))
 					end
 				elseif now >= (enemy:GetAttribute("NextAttack") or 0) then
-					local maxAttackers = 2 + #Players:GetPlayers()
+					local maxAttackers = math.clamp(math.ceil(#Players:GetPlayers() * 0.75), 1, 4)
 					if enemy:GetAttribute("Kind") == "Monolite" or activeAttackers(player.UserId, now) < maxAttackers then
 						enemy:SetAttribute("AttackTokenUntil", now + 0.9)
 						enemy:SetAttribute("NextAttack", now + (enemy:GetAttribute("Kind") == "Monolite" and 2.8 or 1.7))
@@ -706,10 +757,17 @@ RunService.Heartbeat:Connect(function(deltaTime)
 						bossShockwave(enemy)
 						else
 						local humanoid = targetRoot.Parent and targetRoot.Parent:FindFirstChildOfClass("Humanoid")
-						if humanoid then
-							humanoid:TakeDamage(data.damage)
-							remote:FireClient(player, "DamageReceived", data.damage, enemy:GetAttribute("Kind"))
-						end
+							if humanoid then
+								local state = playerState[player]
+								if not state or now >= (state.nextDamage or 0) then
+									if state then
+										state.nextDamage = now + 0.65
+										state.lastDamage = now
+									end
+									humanoid:TakeDamage(data.damage)
+									remote:FireClient(player, "DamageReceived", data.damage, enemy:GetAttribute("Kind"))
+								end
+							end
 						end
 					else
 						local tangent = Vector3.new(-delta.Z, 0, delta.X)
@@ -727,24 +785,32 @@ RunService.Heartbeat:Connect(function(deltaTime)
 end)
 
 local function setupPlayer(player)
-	playerState[player] = { attack = 0, skill = 0, dash = 0, cycle = 0, combo = 0, heroCharge = 0, heroActive = false, weaponIndex = 1, protectedUntil = os.clock() + 5 }
-	player.CharacterAdded:Connect(function(character)
-		if playerState[player] then playerState[player].protectedUntil = os.clock() + 5 end
+	playerState[player] = { attack = 0, skill = 0, dash = 0, cycle = 0, combo = 0, heroCharge = 0, heroActive = false, weaponIndex = 3, protectedUntil = os.clock() + 7, nextDamage = 0, lastDamage = 0 }
+	local function configureCharacter(character)
+		if playerState[player] then playerState[player].protectedUntil = os.clock() + 7 end
 		local humanoid = character:WaitForChild("Humanoid")
+		humanoid.BreakJointsOnDeath = false
+		humanoid.MaxHealth = 140
+		humanoid.Health = humanoid.MaxHealth
 		humanoid.WalkSpeed = 20
 		humanoid.JumpHeight = 9
+		humanoid.Died:Connect(function()
+			remote:FireClient(player, "PlayerDown")
+		end)
 		task.wait(0.4)
-		local weaponName = WEAPON_ORDER[playerState[player] and playerState[player].weaponIndex or 1]
+		local weaponIndex = playerState[player] and playerState[player].weaponIndex or 3
+		local weaponName = WEAPON_ORDER[weaponIndex]
 		attachWeapon(character, weaponName)
-		remote:FireClient(player, "WeaponEquipped", weaponName, 1, WEAPON_DATA[weaponName].cooldown)
+		remote:FireClient(player, "WeaponEquipped", weaponName, weaponIndex, WEAPON_DATA[weaponName].cooldown)
 		remote:FireClient(player, "RunPhase", currentPhaseText, activeModifier)
 		if runState.stage > 0 then
 			remote:FireClient(player, "RunProgress", runState.stage, runState.defeats, runState.expectedDefeats or 0)
 		end
 		remote:FireClient(player, "HeroCharge", playerState[player] and playerState[player].heroCharge or 0)
-	end)
+	end
+	player.CharacterAdded:Connect(configureCharacter)
 	if player.Character then
-		task.defer(attachWeapon, player.Character, WEAPON_ORDER[1])
+		task.spawn(configureCharacter, player.Character)
 	end
 end
 
@@ -753,6 +819,20 @@ Players.PlayerRemoving:Connect(function(player)
 	playerState[player] = nil
 end)
 for _, player in Players:GetPlayers() do setupPlayer(player) end
+
+task.spawn(function()
+	while enemies.Parent do
+		local now = os.clock()
+		for _, player in Players:GetPlayers() do
+			local state = playerState[player]
+			local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+			if state and humanoid and humanoid.Health > 0 and humanoid.Health < humanoid.MaxHealth and now - (state.lastDamage or 0) >= 3 then
+				humanoid.Health = math.min(humanoid.MaxHealth, humanoid.Health + 6)
+			end
+		end
+		task.wait(1)
+	end
+end)
 
 local function announcePhase(text)
 	currentPhaseText = text
@@ -763,12 +843,17 @@ local function startStage(stage)
 	runState.stage = stage
 	runState.defeats = 0
 	local entries
+	local playerCount = math.max(1, #Players:GetPlayers())
 	if stage == 1 then
 		announcePhase("ONDATA 1 • SCHIVA IL BRANCO")
-		entries = { "Scheggino", "Rapido", "Scheggino", "Gonfio", "Rapido", "Tessitore", "Scheggino" }
+		local pool = { "Scheggino", "Rapido", "Gonfio", "Tessitore", "Scheggino", "Rapido", "Gonfio", "Tessitore", "Scheggino", "Rapido", "Gonfio", "Tessitore" }
+		entries = {}
+		for index = 1, math.min(3 + (playerCount * 2), #pool) do table.insert(entries, pool[index]) end
 	elseif stage == 2 then
 		announcePhase("ONDATA 2 • ROMPI LE CORAZZE")
-		entries = { "Rapido", "Guscione", "Tessitore", "Gonfio", "Guscione", "Scheggino", "GuscioneElite", "Rapido" }
+		local pool = { "Rapido", "Guscione", "Tessitore", "Gonfio", "Guscione", "Scheggino", "GuscioneElite", "Rapido", "Guscione", "Tessitore", "Gonfio", "GuscioneElite", "Rapido", "Guscione" }
+		entries = {}
+		for index = 1, math.min(4 + (playerCount * 2), #pool) do table.insert(entries, pool[index]) end
 	elseif stage == 3 then
 		announcePhase("GUARDIANO SPENTO • EVOCA SOLARIS")
 		entries = { "Monolite" }
@@ -832,4 +917,4 @@ end
 
 task.delay(1, beginRun)
 
-print("PRISMORA_ACTION_READY enemies=16 separation=on attack_tokens=on")
+print("PRISMORA_ACTION_READY waves=adaptive separation=on attack_tokens=scaled solo_regen=on")
