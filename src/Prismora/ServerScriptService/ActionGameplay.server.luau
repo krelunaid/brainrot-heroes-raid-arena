@@ -158,6 +158,10 @@ local function createEnemy(kind, position)
 end
 
 local function attachWeapon(character, weaponName)
+	local previousGrip = character:FindFirstChild("WeaponGrip", true)
+	if previousGrip then
+		previousGrip:Destroy()
+	end
 	local previous = character:FindFirstChild("PrismoraWeapon")
 	if previous then
 		previous:Destroy()
@@ -186,10 +190,13 @@ local function attachWeapon(character, weaponName)
 	handle.Parent = weapon
 	weapon.PrimaryPart = handle
 
-	local weldHand = Instance.new("WeldConstraint")
-	weldHand.Part0 = hand
-	weldHand.Part1 = handle
-	weldHand.Parent = handle
+	local grip = Instance.new("Motor6D")
+	grip.Name = "WeaponGrip"
+	grip.Part0 = hand
+	grip.Part1 = handle
+	grip.C0 = CFrame.new(0, -0.85, 0) * CFrame.Angles(0, 0, math.rad(-12))
+	grip.C1 = CFrame.identity
+	grip.Parent = hand
 
 	local created = {}
 	local function addPiece(name, size, color, material, relative, shape)
@@ -352,10 +359,27 @@ end
 local function flashWeapon(character, duration)
 	local weapon = character:FindFirstChild("PrismoraWeapon")
 	local trail = weapon and weapon:FindFirstChild("AttackTrail", true)
+	local grip = character:FindFirstChild("WeaponGrip", true)
 	if trail then
 		trail.Enabled = true
 		task.delay(duration, function()
 			if trail.Parent then trail.Enabled = false end
+		end)
+	end
+	if grip and grip:IsA("Motor6D") and weapon then
+		local weaponName = weapon:GetAttribute("WeaponName")
+		local strike = weaponName == "Pulsar"
+			and CFrame.new(0, 0, 0.32)
+			or CFrame.Angles(math.rad(weaponName == "Frantuma" and -105 or -72), 0, math.rad(-32))
+		TweenService:Create(grip, TweenInfo.new(0.07, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+			Transform = strike,
+		}):Play()
+		task.delay(0.075, function()
+			if grip.Parent then
+				TweenService:Create(grip, TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+					Transform = CFrame.identity,
+				}):Play()
+			end
 		end)
 	end
 end

@@ -193,6 +193,10 @@ local function createEnemy(kind, position)
 end
 
 local function attachWeapon(character, weaponName)
+	local previousGrip = character:FindFirstChild("WeaponGrip", true)
+	if previousGrip then
+		previousGrip:Destroy()
+	end
 	local previous = character:FindFirstChild("PrismoraWeapon")
 	if previous then
 		previous:Destroy()
@@ -221,10 +225,13 @@ local function attachWeapon(character, weaponName)
 	handle.Parent = weapon
 	weapon.PrimaryPart = handle
 
-	local weldHand = Instance.new("WeldConstraint")
-	weldHand.Part0 = hand
-	weldHand.Part1 = handle
-	weldHand.Parent = handle
+	local grip = Instance.new("Motor6D")
+	grip.Name = "WeaponGrip"
+	grip.Part0 = hand
+	grip.Part1 = handle
+	grip.C0 = CFrame.new(0, -0.85, 0) * CFrame.Angles(0, 0, math.rad(-12))
+	grip.C1 = CFrame.identity
+	grip.Parent = hand
 
 	local created = {}
 	local function addPiece(name, size, color, material, relative, shape)
@@ -387,10 +394,27 @@ end
 local function flashWeapon(character, duration)
 	local weapon = character:FindFirstChild("PrismoraWeapon")
 	local trail = weapon and weapon:FindFirstChild("AttackTrail", true)
+	local grip = character:FindFirstChild("WeaponGrip", true)
 	if trail then
 		trail.Enabled = true
 		task.delay(duration, function()
 			if trail.Parent then trail.Enabled = false end
+		end)
+	end
+	if grip and grip:IsA("Motor6D") and weapon then
+		local weaponName = weapon:GetAttribute("WeaponName")
+		local strike = weaponName == "Pulsar"
+			and CFrame.new(0, 0, 0.32)
+			or CFrame.Angles(math.rad(weaponName == "Frantuma" and -105 or -72), 0, math.rad(-32))
+		TweenService:Create(grip, TweenInfo.new(0.07, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+			Transform = strike,
+		}):Play()
+		task.delay(0.075, function()
+			if grip.Parent then
+				TweenService:Create(grip, TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+					Transform = CFrame.identity,
+				}):Play()
+			end
 		end)
 	end
 end
@@ -1105,6 +1129,8 @@ for index = 1, 30 do
 	crystal.Transparency = 0.08
 	crystal.Size = Vector3.new(1.6, 4.2, 1.6)
 	crystal.CFrame = CFrame.new(position) * CFrame.Angles(0, angle, math.rad(45))
+	crystal:SetAttribute("PrismoraBaseCFrame", crystal.CFrame)
+	crystal:SetAttribute("PrismoraAnimationPhase", index)
 	crystal:SetAttribute("Active", true)
 	crystal.Parent = crystalFolder
 
@@ -1122,14 +1148,6 @@ for index = 1, 30 do
 		end
 	end)
 
-	task.spawn(function()
-		local base = crystal.CFrame
-		while crystal.Parent do
-			local t = os.clock() + index
-			crystal.CFrame = base * CFrame.new(0, math.sin(t * 1.7) * 0.35, 0) * CFrame.Angles(0, t * 0.55, 0)
-			task.wait(0.05)
-		end
-	end)
 end
 
 local function setupPlayer(player)
@@ -1726,6 +1744,30 @@ local function round(parent, radius)
 	corner.CornerRadius = UDim.new(0, radius)
 	corner.Parent = parent
 end
+
+-- Crystals animate only on the local client and only when nearby. This removes
+-- hundreds of replicated CFrame updates per second from the server on mobile.
+task.spawn(function()
+	local crystalFolder = workspace:WaitForChild("PrismoraCrystals", 20)
+	while crystalFolder and crystalFolder.Parent do
+		local character = player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		local now = os.clock()
+		if root then
+			for _, crystal in crystalFolder:GetChildren() do
+				if crystal:IsA("BasePart") then
+					local base = crystal:GetAttribute("PrismoraBaseCFrame")
+					local phase = crystal:GetAttribute("PrismoraAnimationPhase") or 0
+					if typeof(base) == "CFrame" and (crystal.Position - root.Position).Magnitude <= 150 then
+						local t = now + phase
+						crystal.CFrame = base * CFrame.new(0, math.sin(t * 1.7) * 0.35, 0) * CFrame.Angles(0, t * 0.55, 0)
+					end
+				end
+			end
+		end
+		task.wait(0.1)
+	end
+end)
 
 local function stroke(parent, color, transparency, thickness)
 	local outline = Instance.new("UIStroke")

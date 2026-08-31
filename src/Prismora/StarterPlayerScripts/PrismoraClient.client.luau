@@ -32,6 +32,30 @@ local function round(parent, radius)
 	corner.Parent = parent
 end
 
+-- Crystals animate only on the local client and only when nearby. This removes
+-- hundreds of replicated CFrame updates per second from the server on mobile.
+task.spawn(function()
+	local crystalFolder = workspace:WaitForChild("PrismoraCrystals", 20)
+	while crystalFolder and crystalFolder.Parent do
+		local character = player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		local now = os.clock()
+		if root then
+			for _, crystal in crystalFolder:GetChildren() do
+				if crystal:IsA("BasePart") then
+					local base = crystal:GetAttribute("PrismoraBaseCFrame")
+					local phase = crystal:GetAttribute("PrismoraAnimationPhase") or 0
+					if typeof(base) == "CFrame" and (crystal.Position - root.Position).Magnitude <= 150 then
+						local t = now + phase
+						crystal.CFrame = base * CFrame.new(0, math.sin(t * 1.7) * 0.35, 0) * CFrame.Angles(0, t * 0.55, 0)
+					end
+				end
+			end
+		end
+		task.wait(0.1)
+	end
+end)
+
 local function stroke(parent, color, transparency, thickness)
 	local outline = Instance.new("UIStroke")
 	outline.Color = color

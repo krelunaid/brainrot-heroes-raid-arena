@@ -112,6 +112,8 @@ for index = 1, 30 do
 	crystal.Transparency = 0.08
 	crystal.Size = Vector3.new(1.6, 4.2, 1.6)
 	crystal.CFrame = CFrame.new(position) * CFrame.Angles(0, angle, math.rad(45))
+	crystal:SetAttribute("PrismoraBaseCFrame", crystal.CFrame)
+	crystal:SetAttribute("PrismoraAnimationPhase", index)
 	crystal:SetAttribute("Active", true)
 	crystal.Parent = crystalFolder
 
@@ -129,14 +131,6 @@ for index = 1, 30 do
 		end
 	end)
 
-	task.spawn(function()
-		local base = crystal.CFrame
-		while crystal.Parent do
-			local t = os.clock() + index
-			crystal.CFrame = base * CFrame.new(0, math.sin(t * 1.7) * 0.35, 0) * CFrame.Angles(0, t * 0.55, 0)
-			task.wait(0.05)
-		end
-	end)
 end
 
 local function setupPlayer(player)
