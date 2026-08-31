@@ -381,6 +381,17 @@ combatRemote.OnClientEvent:Connect(function(action, value, extra, detail)
 		if extra and extra ~= "NESSUNO" then
 			showToast(string.upper(extra), Color3.fromRGB(176, 118, 255))
 		end
+	elseif action == "RunProgress" then
+		local stage = value or 1
+		local defeated = extra or 0
+		local total = detail or 0
+		if stage == 1 then
+			objective.Text = string.format("ONDATA 1 • NEMICI %d/%d", defeated, total)
+		elseif stage == 2 then
+			objective.Text = string.format("ONDATA 2 • CORAZZE %d/%d", defeated, total)
+		else
+			objective.Text = "MONOLITE • COLPISCI E CARICA SOLARIS"
+		end
 	elseif action == "RunComplete" then
 		title.Text = "VITTORIA"
 		objective.Text = "RICOMPENSA OTTENUTA • NUOVA RUN TRA 8s"
@@ -395,26 +406,6 @@ questRemote.OnClientEvent:Connect(function(action, value)
 		title.Text = "RISVEGLIO"
 		objective.Text = "Ora affronta il Monolite e conquista frammenti"
 		showToast("RISVEGLIO PRISMATICO!", Color3.fromRGB(255, 95, 162))
-	end
-end)
-
-task.spawn(function()
-	local stats = player:WaitForChild("leaderstats", 20)
-	local defeats = stats and stats:WaitForChild("Sconfitte", 10)
-	local fragments = stats and stats:WaitForChild("Frammenti", 10)
-	if defeats then
-		local function updateMission()
-			if defeats.Value < 7 then
-				objective.Text = string.format("Sconfiggi il branco  •  %d/7", defeats.Value)
-			elseif defeats.Value < 15 then
-				objective.Text = "Usa POTERE e DASH contro il Guscione"
-			else
-				objective.Text = string.format("Affronta il MONOLITE  •  %d frammenti", fragments and fragments.Value or 0)
-			end
-		end
-		updateMission()
-		defeats:GetPropertyChangedSignal("Value"):Connect(updateMission)
-		if fragments then fragments:GetPropertyChangedSignal("Value"):Connect(updateMission) end
 	end
 end)
 

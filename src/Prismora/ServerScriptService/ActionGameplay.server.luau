@@ -19,6 +19,8 @@ enemies.Name = "PrismoraEnemies"
 enemies.Parent = workspace
 
 local combatCenter = workspace:GetAttribute("PrismoraCombatCenter") or Vector3.new(0, 72, -20)
+local combatHalfSizeX = workspace:GetAttribute("PrismoraCombatHalfSizeX") or 48
+local combatHalfSizeZ = workspace:GetAttribute("PrismoraCombatHalfSizeZ") or 48
 local playerState = {}
 local runState = { stage = 0, defeats = 0, runNumber = 0 }
 local activeModifier = "NESSUNO"
@@ -579,6 +581,14 @@ local function separationVector(enemy, position)
 	return steering
 end
 
+local function clampToCombatFloor(position)
+	return Vector3.new(
+		math.clamp(position.X, combatCenter.X - combatHalfSizeX, combatCenter.X + combatHalfSizeX),
+		position.Y,
+		math.clamp(position.Z, combatCenter.Z - combatHalfSizeZ, combatCenter.Z + combatHalfSizeZ)
+	)
+end
+
 local function activeAttackers(userId, now)
 	local count = 0
 	for _, other in enemies:GetChildren() do
@@ -660,7 +670,7 @@ RunService.Heartbeat:Connect(function(deltaTime)
 				if distance > data.range + 0.8 and distance > 0.1 then
 					local desired = delta.Unit + (separation * 1.35)
 					if desired.Magnitude > 0.1 then
-						local newPosition = position + (desired.Unit * (enemy:GetAttribute("MoveSpeed") or data.speed) * step)
+						local newPosition = clampToCombatFloor(position + (desired.Unit * (enemy:GetAttribute("MoveSpeed") or data.speed) * step))
 						enemy:PivotTo(CFrame.lookAt(newPosition, newPosition + desired.Unit))
 					end
 				elseif now >= (enemy:GetAttribute("NextAttack") or 0) then
@@ -679,12 +689,12 @@ RunService.Heartbeat:Connect(function(deltaTime)
 						end
 					else
 						local tangent = Vector3.new(-delta.Z, 0, delta.X)
-						if tangent.Magnitude > 0.1 then
-							local orbitSign = enemy:GetAttribute("OrbitSign") or 1
-							local desired = (tangent.Unit * orbitSign) + (separation * 1.7)
-							local newPosition = position + (desired.Unit * (enemy:GetAttribute("MoveSpeed") or data.speed) * 0.55 * step)
-							enemy:PivotTo(CFrame.lookAt(newPosition, flatTarget))
-						end
+					if tangent.Magnitude > 0.1 then
+						local orbitSign = enemy:GetAttribute("OrbitSign") or 1
+						local desired = (tangent.Unit * orbitSign) + (separation * 1.7)
+						local newPosition = clampToCombatFloor(position + (desired.Unit * (enemy:GetAttribute("MoveSpeed") or data.speed) * 0.55 * step))
+						enemy:PivotTo(CFrame.lookAt(newPosition, flatTarget))
+					end
 					end
 				end
 			end
@@ -737,11 +747,20 @@ local function startStage(stage)
 	end
 	if entries then
 		runState.expectedDefeats = #entries
+		remote:FireAllClients("RunProgress", stage, 0, #entries)
 		task.spawn(function()
 			for index, kind in entries do
 				local ring = stage == 3 and 38 or (22 + ((index % 2) * 8))
 				local angle = ((index - 1) / #entries) * math.pi * 2
-				local position = combatCenter + Vector3.new(math.cos(angle) * ring, kind == "Monolite" and 8 or 4, math.sin(angle) * ring - 8)
+				local data = ENEMY_DATA[kind]
+				local rootHeight = kind == "Monolite" and 13 or data.size
+				local floorY = combatCenter.Y - 2
+				local spawnY = floorY + (rootHeight * 0.5) + 0.15
+				local position = clampToCombatFloor(Vector3.new(
+					combatCenter.X + (math.cos(angle) * ring),
+					spawnY,
+					combatCenter.Z + (math.sin(angle) * ring) - 8
+				))
 				local enemy = createEnemy(kind, position)
 				enemy:SetAttribute("OrbitSign", index % 2 == 0 and 1 or -1)
 				enemy:SetAttribute("TargetUserId", 0)
@@ -763,6 +782,7 @@ end
 
 registerDefeat = function(kind)
 	runState.defeats += 1
+	remote:FireAllClients("RunProgress", runState.stage, runState.defeats, runState.expectedDefeats or 0)
 	if runState.stage == 1 and runState.defeats >= (runState.expectedDefeats or 7) then
 		task.delay(1.2, function() startStage(2) end)
 	elseif runState.stage == 2 and runState.defeats >= (runState.expectedDefeats or 8) then

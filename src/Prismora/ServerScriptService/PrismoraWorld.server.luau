@@ -324,6 +324,8 @@ local function createArchipelago(world)
 	local centralData = createWalkSurface(world, centralIsland, "PrismaHub", Color3.fromRGB(118, 255, 235))
 	workspace:SetAttribute("PrismoraSpawnPoint", centralData.center + Vector3.new(0, 3, 24))
 	workspace:SetAttribute("PrismoraCombatCenter", centralData.center + Vector3.new(0, 2, -28))
+	workspace:SetAttribute("PrismoraCombatHalfSizeX", math.max(32, (centralData.size.X * 0.5) - 8))
+	workspace:SetAttribute("PrismoraCombatHalfSizeZ", math.max(32, (centralData.size.Y * 0.5) - 8))
 
 	local centralOpenings = {}
 	local districtPerimeters = {}
@@ -417,6 +419,23 @@ glow.Parent = spawn
 -- part. Polling also recovers a player before Roblox destroys the character.
 local lastSafeCFrame = {}
 local airStillSince = {}
+local recoveryRayParams = RaycastParams.new()
+recoveryRayParams.FilterType = Enum.RaycastFilterType.Include
+recoveryRayParams.FilterDescendantsInstances = { world }
+
+local function safeGroundBelow(root)
+	local result = workspace:Raycast(root.Position + Vector3.new(0, 2, 0), Vector3.new(0, -12, 0), recoveryRayParams)
+	if not result then
+		return nil
+	end
+	local name = result.Instance.Name
+	if not string.find(name, "PlayableSurface", 1, true)
+		and name ~= "CrystalBridgeDeck"
+		and name ~= "BridgeLanding" then
+		return nil
+	end
+	return result.Position
+end
 
 local function recoveryCFrame(player)
 	if lastSafeCFrame[player] then
@@ -450,10 +469,14 @@ task.spawn(function()
 					humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
 					airStillSince[player] = nil
 				elseif humanoid.FloorMaterial ~= Enum.Material.Air and math.abs(root.AssemblyLinearVelocity.Y) < 12 then
+					local groundPosition = safeGroundBelow(root)
 					local look = root.CFrame.LookVector
 					local flatLook = Vector3.new(look.X, 0, look.Z)
 					if flatLook.Magnitude < 0.1 then flatLook = Vector3.new(0, 0, -1) end
-					lastSafeCFrame[player] = CFrame.lookAt(position + Vector3.new(0, 2.5, 0), position + Vector3.new(0, 2.5, 0) + flatLook.Unit)
+					if groundPosition then
+						local safePosition = groundPosition + Vector3.new(0, 4, 0)
+						lastSafeCFrame[player] = CFrame.lookAt(safePosition, safePosition + flatLook.Unit)
+					end
 					airStillSince[player] = nil
 				elseif humanoid.FloorMaterial == Enum.Material.Air and root.AssemblyLinearVelocity.Magnitude < 1.5 then
 					airStillSince[player] = airStillSince[player] or os.clock()
