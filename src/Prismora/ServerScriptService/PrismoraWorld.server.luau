@@ -189,8 +189,8 @@ local function createBridge(parent, fromData, toData, accentColor)
 			barrier.Anchored = true
 			barrier.CanCollide = true
 			barrier.Transparency = 1
-			barrier.Size = Vector3.new(1, 9, segmentLength)
-			barrier.CFrame = bridgeCFrame * CFrame.new(side * 11.7, 5.0, 0)
+			barrier.Size = Vector3.new(1.5, 18, segmentLength)
+			barrier.CFrame = bridgeCFrame * CFrame.new(side * 11.7, 9.5, 0)
 			barrier.Parent = parent
 		end
 	end
@@ -218,7 +218,8 @@ end
 
 local function createSafetyPerimeter(parent, data, openSides, accentColor)
 	local gap = 30
-	local height = 6
+	-- High enough to stop a full dash/knockback arc, not only a walking player.
+	local height = 22
 	local function addSection(name, size, position)
 		local barrier = Instance.new("Part")
 		barrier.Name = name .. "SafetyBarrier"
