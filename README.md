@@ -1,25 +1,32 @@
-# Brainrot Heroes Raid Arena
+# PRISMORA: Hero Rush
 
-Original Roblox social-lobby and raid prototype generated entirely from native parts and Luau.
+Unico progetto Roblox attivo del repository. Prismora è un action cooperativo
+luminoso: combatti gli Spenti, carica Solaris e libera un Hero colossale durante
+la battaglia.
 
 ## Preview
 
 ```sh
-rojo build default.project.json -o BrainrotHeroesRaidArena.rbxlx
-open BrainrotHeroesRaidArena.rbxlx
+rojo build prismora.project.json -o PrismoraHeroRush-MVP.rbxlx
+open PrismoraHeroRush-MVP.rbxlx
 ```
 
-Press **Play** in Roblox Studio. Players now spawn in the bright **Vibe Loft**, a real pre-raid lobby with eight recognizable zones: Spawn Hall, Setup Pro, LED Dance Floor, Snack Wall, Cinema Pit, Pet Pad, Hidden Vault, and Sky Deck. Cyan floor markers and the world objective lead directly to the raid portal.
+Premi **Play** in Roblox Studio. La build corrente include:
 
-The portal connects the lobby to the complete repeating raid:
+- Raggialama Alba proporzionata all'avatar con combo di tre colpi.
+- Attacco, Potere, Dash e mira assistita su smartphone.
+- Scheggini, Guscione e Monolite con vita, inseguimento e danno.
+- Barra di carica Hero ed evocazione di Solaris per otto secondi.
+- Frammenti garantiti per ogni nemico sconfitto.
+- Ponti larghi con raccordi, barriere invisibili e superfici giocabili separate
+  dalle mesh decorative.
+- Recupero automatico all'ultimo checkpoint quando si cade.
+- Illuminazione pastello ottimizzata per mobile e StreamingEnabled.
 
-- Nova Shuttle lands during the 25-second countdown.
-- Players receive three original collectible weapons: Nova Pulse, Prism Fang, and Starbreaker X.
-- Prisma Rex becomes vulnerable for 100 seconds and launches shockwaves players must jump over.
-- The boss health scales with the number of players, while remaining playable in a solo test.
-- On victory, one random active participant receives the full Hero and everyone else receives fragments.
-- On phones, a large pink **ATTACCA** button appears during the active raid; PC click and controller RT continue to work.
+## Controlli
 
-## Integration
+- PC: clic sinistro attacca, **Q** potere, **Shift** dash, **E** evoca Solaris.
+- Smartphone: pulsanti **ATTACCA**, **POTERE**, **DASH** e **HERO**.
 
-Copy `ArenaBuilder.server.luau`, `RaidGameplay.server.luau`, and `VibeLoftBuilder.server.luau` into `ServerScriptService`, then copy `ArenaPresentation.client.luau` into `StarterPlayerScripts` of the target experience. Change `ORIGIN` in the arena builder and `LOFT_ORIGIN` in the loft builder before moving either space.
+I vecchi file `BrainrotHeroesRaidArena-*` restano soltanto come storico locale e
+non sono più la direzione di sviluppo.
