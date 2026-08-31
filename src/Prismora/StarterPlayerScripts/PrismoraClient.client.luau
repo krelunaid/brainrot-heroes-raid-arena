@@ -313,6 +313,10 @@ combatRemote.OnClientEvent:Connect(function(action, value, extra)
 	elseif action == "DamageReceived" then
 		showToast(string.format("-%d  SCHIVA!", value), Color3.fromRGB(255, 122, 47))
 		pulseHeader(Color3.fromRGB(130, 55, 35))
+	elseif action == "ArmorBlocked" then
+		showToast("CORAZZA! DASH E COLPISCI DA DIETRO", Color3.fromRGB(255, 122, 47))
+	elseif action == "BossTelegraph" then
+		showToast("ONDA ARANCIONE • SALTA!", Color3.fromRGB(255, 122, 47))
 	elseif action == "Reward" then
 		showToast(string.format("+%d FRAMMENTI • %s SCONFITTO", value, string.upper(extra or "SPENTO")), Color3.fromRGB(127, 232, 196))
 	elseif action == "HeroCharge" then
@@ -333,6 +337,18 @@ combatRemote.OnClientEvent:Connect(function(action, value, extra)
 		task.delay(8, function()
 			if title.Parent then title.Text = "PRISMORA: HERO RUSH" end
 		end)
+	elseif action == "RunModifier" then
+		showToast("MODIFICATORE • " .. string.upper(value or "SCONOSCIUTO"), Color3.fromRGB(176, 118, 255))
+	elseif action == "RunPhase" then
+		title.Text = "INCURSIONE PRISMORA"
+		objective.Text = value or "COMBATTI"
+		if extra and extra ~= "NESSUNO" then
+			showToast(string.upper(extra), Color3.fromRGB(176, 118, 255))
+		end
+	elseif action == "RunComplete" then
+		title.Text = "INCURSIONE COMPLETATA"
+		objective.Text = "RICOMPENSA OTTENUTA • NUOVA RUN TRA 8s"
+		showToast("VITTORIA! TUTTI RICEVONO FRAMMENTI", Color3.fromRGB(127, 232, 196))
 	end
 end)
 

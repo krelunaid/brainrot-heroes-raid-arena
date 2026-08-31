@@ -20,11 +20,15 @@ enemies.Parent = workspace
 
 local combatCenter = workspace:GetAttribute("PrismoraCombatCenter") or Vector3.new(0, 72, -20)
 local playerState = {}
+local runState = { stage = 0, defeats = 0, runNumber = 0 }
+local activeModifier = "NESSUNO"
+local currentPhaseText = "INCURSIONE IN PREPARAZIONE"
+local registerDefeat
 
 local ENEMY_DATA = {
 	Scheggino = { health = 55, speed = 9, damage = 7, range = 5.5, reward = 1, size = 3.2 },
 	Guscione = { health = 170, speed = 5.5, damage = 13, range = 7, reward = 2, size = 5.4 },
-	Monolite = { health = 650, speed = 2.2, damage = 18, range = 11, reward = 8, size = 12 },
+	Monolite = { health = 650, speed = 2.2, damage = 18, range = 18, reward = 8, size = 12 },
 }
 
 local function getStat(player, name)
@@ -60,11 +64,15 @@ end
 
 local function createEnemy(kind, position)
 	local data = ENEMY_DATA[kind]
+	local healthMultiplier = activeModifier == "CORAZZA PRISMATICA" and 1.3 or 1
+	local speedMultiplier = activeModifier == "FURIA DEGLI SPENTI" and 1.25 or 1
+	local maxHealth = math.floor(data.health * healthMultiplier)
 	local model = Instance.new("Model")
 	model.Name = kind
 	model:SetAttribute("Kind", kind)
-	model:SetAttribute("Health", data.health)
-	model:SetAttribute("MaxHealth", data.health)
+	model:SetAttribute("Health", maxHealth)
+	model:SetAttribute("MaxHealth", maxHealth)
+	model:SetAttribute("MoveSpeed", data.speed * speedMultiplier)
 	model:SetAttribute("Dead", false)
 	model:SetAttribute("SpawnPosition", position)
 	model:SetAttribute("NextAttack", 0)
@@ -220,6 +228,7 @@ local function defeatEnemy(enemy, player)
 	awardDefeat(player, enemy)
 	local spawnPosition = enemy:GetAttribute("SpawnPosition")
 	local kind = enemy:GetAttribute("Kind")
+	if registerDefeat then registerDefeat(kind) end
 
 	for _, part in enemy:GetDescendants() do
 		if part:IsA("BasePart") then
@@ -233,13 +242,20 @@ local function defeatEnemy(enemy, player)
 	task.delay(0.4, function()
 		if enemy.Parent then enemy:Destroy() end
 	end)
-	task.delay(kind == "Monolite" and 18 or 7, function()
-		createEnemy(kind, spawnPosition)
-	end)
 end
 
 local function damageEnemy(enemy, player, amount)
 	if enemy:GetAttribute("Dead") then return false end
+	if enemy:GetAttribute("Kind") == "Guscione" and enemy.PrimaryPart then
+		local playerRoot = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+		if playerRoot then
+			local toPlayer = playerRoot.Position - enemy.PrimaryPart.Position
+			if toPlayer.Magnitude > 0 and enemy.PrimaryPart.CFrame.LookVector:Dot(toPlayer.Unit) > 0.2 then
+				amount = math.max(3, math.floor(amount * 0.2))
+				remote:FireClient(player, "ArmorBlocked")
+			end
+		end
+	end
 	local health = math.max(0, (enemy:GetAttribute("Health") or 0) - amount)
 	enemy:SetAttribute("Health", health)
 	updateHealthDisplay(enemy)
@@ -292,7 +308,8 @@ end
 local function addHeroCharge(player, amount)
 	local state = playerState[player]
 	if not state or state.heroActive then return end
-	state.heroCharge = math.clamp(state.heroCharge + amount, 0, 100)
+	local multiplier = activeModifier == "TEMPESTA SOLARE" and 1.45 or 1
+	state.heroCharge = math.clamp(state.heroCharge + (amount * multiplier), 0, 100)
 	remote:FireClient(player, "HeroCharge", state.heroCharge)
 	if state.heroCharge >= 100 then
 		remote:FireClient(player, "HeroReady")
@@ -455,6 +472,46 @@ local function nearestPlayer(position, maxDistance)
 	return bestPlayer, bestRoot, bestDistance
 end
 
+local function bossShockwave(enemy)
+	if not enemy.PrimaryPart or enemy:GetAttribute("Dead") then return end
+	local origin = enemy.PrimaryPart.Position - Vector3.new(0, 6.2, 0)
+	local warning = Instance.new("Part")
+	warning.Name = "BossWarning"
+	warning.Anchored = true
+	warning.CanCollide = false
+	warning.CanTouch = false
+	warning.CanQuery = false
+	warning.Shape = Enum.PartType.Cylinder
+	warning.Material = Enum.Material.Neon
+	warning.Color = Color3.fromRGB(255, 122, 47)
+	warning.Transparency = 0.5
+	warning.Size = Vector3.new(0.22, 40, 40)
+	warning.CFrame = CFrame.new(origin) * CFrame.Angles(0, 0, math.rad(90))
+	warning.Parent = workspace
+	remote:FireAllClients("BossTelegraph")
+	TweenService:Create(warning, TweenInfo.new(0.8), { Transparency = 0.16 }):Play()
+
+	task.delay(0.85, function()
+		if warning.Parent then
+			warning.Color = Color3.fromRGB(255, 95, 162)
+			TweenService:Create(warning, TweenInfo.new(0.34), {
+				Size = Vector3.new(0.22, 58, 58),
+				Transparency = 1,
+			}):Play()
+		end
+		for _, player in Players:GetPlayers() do
+			local character = player.Character
+			local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+			local root = character and character:FindFirstChild("HumanoidRootPart")
+			if humanoid and root and (root.Position - origin).Magnitude <= 24 then
+				humanoid:TakeDamage(18)
+				remote:FireClient(player, "DamageReceived", 18, "Monolite")
+			end
+		end
+		task.delay(0.4, function() if warning.Parent then warning:Destroy() end end)
+	end)
+end
+
 local aiAccumulator = 0
 RunService.Heartbeat:Connect(function(deltaTime)
 	aiAccumulator += deltaTime
@@ -471,14 +528,18 @@ RunService.Heartbeat:Connect(function(deltaTime)
 				local flatTarget = Vector3.new(targetRoot.Position.X, position.Y, targetRoot.Position.Z)
 				local delta = flatTarget - position
 				if distance > data.range and delta.Magnitude > 0.1 then
-					local newPosition = position + (delta.Unit * data.speed * step)
+					local newPosition = position + (delta.Unit * (enemy:GetAttribute("MoveSpeed") or data.speed) * step)
 					enemy:PivotTo(CFrame.lookAt(newPosition, newPosition + delta.Unit))
 				elseif os.clock() >= (enemy:GetAttribute("NextAttack") or 0) then
 					enemy:SetAttribute("NextAttack", os.clock() + (enemy:GetAttribute("Kind") == "Monolite" and 2.8 or 1.7))
-					local humanoid = targetRoot.Parent and targetRoot.Parent:FindFirstChildOfClass("Humanoid")
-					if humanoid then
-						humanoid:TakeDamage(data.damage)
-						remote:FireClient(player, "DamageReceived", data.damage, enemy:GetAttribute("Kind"))
+					if enemy:GetAttribute("Kind") == "Monolite" then
+						bossShockwave(enemy)
+					else
+						local humanoid = targetRoot.Parent and targetRoot.Parent:FindFirstChildOfClass("Humanoid")
+						if humanoid then
+							humanoid:TakeDamage(data.damage)
+							remote:FireClient(player, "DamageReceived", data.damage, enemy:GetAttribute("Kind"))
+						end
 					end
 				end
 			end
@@ -495,6 +556,7 @@ local function setupPlayer(player)
 		task.wait(0.4)
 		attachWeapon(character)
 		remote:FireClient(player, "WeaponEquipped")
+		remote:FireClient(player, "RunPhase", currentPhaseText, activeModifier)
 	end)
 	if player.Character then
 		task.defer(attachWeapon, player.Character)
@@ -507,10 +569,54 @@ Players.PlayerRemoving:Connect(function(player)
 end)
 for _, player in Players:GetPlayers() do setupPlayer(player) end
 
-createEnemy("Scheggino", combatCenter + Vector3.new(-9, 4, -12))
-createEnemy("Scheggino", combatCenter + Vector3.new(0, 5, -16))
-createEnemy("Scheggino", combatCenter + Vector3.new(10, 4, -11))
-createEnemy("Guscione", combatCenter + Vector3.new(-18, 4, -30))
-createEnemy("Monolite", combatCenter + Vector3.new(18, 8, -42))
+local function announcePhase(text)
+	currentPhaseText = text
+	remote:FireAllClients("RunPhase", text, activeModifier)
+end
+
+local function startStage(stage)
+	runState.stage = stage
+	runState.defeats = 0
+	if stage == 1 then
+		announcePhase("ONDATA 1 • SPEZZA GLI SCHEGGINI")
+		createEnemy("Scheggino", combatCenter + Vector3.new(-10, 4, -14))
+		createEnemy("Scheggino", combatCenter + Vector3.new(0, 5, -18))
+		createEnemy("Scheggino", combatCenter + Vector3.new(11, 4, -13))
+	elseif stage == 2 then
+		announcePhase("ONDATA 2 • AGGIRA I GUSCIONI")
+		createEnemy("Scheggino", combatCenter + Vector3.new(-14, 4, -18))
+		createEnemy("Scheggino", combatCenter + Vector3.new(14, 5, -19))
+		createEnemy("Guscione", combatCenter + Vector3.new(-8, 4, -30))
+		createEnemy("Guscione", combatCenter + Vector3.new(9, 4, -31))
+	elseif stage == 3 then
+		announcePhase("GUARDIANO SPENTO • EVOCA SOLARIS")
+		createEnemy("Monolite", combatCenter + Vector3.new(0, 8, -38))
+	end
+end
+
+local function beginRun()
+	for _, enemy in enemies:GetChildren() do enemy:Destroy() end
+	runState.runNumber += 1
+	local modifiers = { "FURIA DEGLI SPENTI", "CORAZZA PRISMATICA", "TEMPESTA SOLARE" }
+	activeModifier = modifiers[((runState.runNumber - 1) % #modifiers) + 1]
+	remote:FireAllClients("RunModifier", activeModifier)
+	startStage(1)
+end
+
+registerDefeat = function(kind)
+	runState.defeats += 1
+	if runState.stage == 1 and runState.defeats >= 3 then
+		task.delay(1.2, function() startStage(2) end)
+	elseif runState.stage == 2 and runState.defeats >= 4 then
+		task.delay(1.5, function() startStage(3) end)
+	elseif runState.stage == 3 and kind == "Monolite" then
+		runState.stage = 4
+		announcePhase("INCURSIONE COMPLETATA • FRAMMENTI OTTENUTI")
+		remote:FireAllClients("RunComplete", runState.runNumber)
+		task.delay(8, beginRun)
+	end
+end
+
+task.delay(1, beginRun)
 
 print("PRISMORA_ACTION_READY enemies=5 weapon=RaggialamaAlba")
