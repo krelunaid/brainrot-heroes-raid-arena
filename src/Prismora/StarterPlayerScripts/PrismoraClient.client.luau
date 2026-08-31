@@ -418,8 +418,8 @@ combatRemote.OnClientEvent:Connect(function(action, value, extra, detail)
 		end
 	elseif action == "RunComplete" then
 		title.Text = "VITTORIA"
-		objective.Text = "RICOMPENSA OTTENUTA • NUOVA RUN TRA 8s"
-		showToast("VITTORIA! TUTTI RICEVONO FRAMMENTI", Color3.fromRGB(127, 232, 196))
+		objective.Text = string.format("+%d FRAMMENTI A TUTTI • NUOVA RUN TRA 8s", extra or 3)
+		showToast(string.format("VITTORIA! +%d FRAMMENTI PER TUTTI", extra or 3), Color3.fromRGB(127, 232, 196))
 	end
 end)
 

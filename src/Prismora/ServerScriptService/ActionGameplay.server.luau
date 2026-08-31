@@ -738,6 +738,10 @@ local function setupPlayer(player)
 		attachWeapon(character, weaponName)
 		remote:FireClient(player, "WeaponEquipped", weaponName, 1, WEAPON_DATA[weaponName].cooldown)
 		remote:FireClient(player, "RunPhase", currentPhaseText, activeModifier)
+		if runState.stage > 0 then
+			remote:FireClient(player, "RunProgress", runState.stage, runState.defeats, runState.expectedDefeats or 0)
+		end
+		remote:FireClient(player, "HeroCharge", playerState[player] and playerState[player].heroCharge or 0)
 	end)
 	if player.Character then
 		task.defer(attachWeapon, player.Character, WEAPON_ORDER[1])
@@ -814,7 +818,14 @@ registerDefeat = function(kind)
 	elseif runState.stage == 3 and kind == "Monolite" then
 		runState.stage = 4
 		announcePhase("INCURSIONE COMPLETATA • FRAMMENTI OTTENUTI")
-		remote:FireAllClients("RunComplete", runState.runNumber)
+		local teamReward = 3
+		for _, player in Players:GetPlayers() do
+			local fragments = getStat(player, "Frammenti")
+			if fragments then
+				fragments.Value += teamReward
+			end
+		end
+		remote:FireAllClients("RunComplete", runState.runNumber, teamReward)
 		task.delay(8, beginRun)
 	end
 end

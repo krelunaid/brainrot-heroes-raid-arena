@@ -773,6 +773,10 @@ local function setupPlayer(player)
 		attachWeapon(character, weaponName)
 		remote:FireClient(player, "WeaponEquipped", weaponName, 1, WEAPON_DATA[weaponName].cooldown)
 		remote:FireClient(player, "RunPhase", currentPhaseText, activeModifier)
+		if runState.stage > 0 then
+			remote:FireClient(player, "RunProgress", runState.stage, runState.defeats, runState.expectedDefeats or 0)
+		end
+		remote:FireClient(player, "HeroCharge", playerState[player] and playerState[player].heroCharge or 0)
 	end)
 	if player.Character then
 		task.defer(attachWeapon, player.Character, WEAPON_ORDER[1])
@@ -849,7 +853,14 @@ registerDefeat = function(kind)
 	elseif runState.stage == 3 and kind == "Monolite" then
 		runState.stage = 4
 		announcePhase("INCURSIONE COMPLETATA • FRAMMENTI OTTENUTI")
-		remote:FireAllClients("RunComplete", runState.runNumber)
+		local teamReward = 3
+		for _, player in Players:GetPlayers() do
+			local fragments = getStat(player, "Frammenti")
+			if fragments then
+				fragments.Value += teamReward
+			end
+		end
+		remote:FireAllClients("RunComplete", runState.runNumber, teamReward)
 		task.delay(8, beginRun)
 	end
 end
@@ -2131,8 +2142,8 @@ combatRemote.OnClientEvent:Connect(function(action, value, extra, detail)
 		end
 	elseif action == "RunComplete" then
 		title.Text = "VITTORIA"
-		objective.Text = "RICOMPENSA OTTENUTA • NUOVA RUN TRA 8s"
-		showToast("VITTORIA! TUTTI RICEVONO FRAMMENTI", Color3.fromRGB(127, 232, 196))
+		objective.Text = string.format("+%d FRAMMENTI A TUTTI • NUOVA RUN TRA 8s", extra or 3)
+		showToast(string.format("VITTORIA! +%d FRAMMENTI PER TUTTI", extra or 3), Color3.fromRGB(127, 232, 196))
 	end
 end)
 
