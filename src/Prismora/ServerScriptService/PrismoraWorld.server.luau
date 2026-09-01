@@ -46,9 +46,9 @@ local function addPostProcessing()
 
 	local bloom = Instance.new("BloomEffect")
 	bloom.Name = "PrismoraBloom"
-	bloom.Intensity = 0.28
-	bloom.Size = 16
-	bloom.Threshold = 1.35
+	bloom.Intensity = 0.58
+	bloom.Size = 26
+	bloom.Threshold = 0.88
 	bloom:SetAttribute("PrismoraEffect", true)
 	bloom.Parent = Lighting
 

@@ -258,7 +258,6 @@ local function startCooldown(button, key, duration)
 end
 
 local function aimAssist(maxDistance, minDot)
-	if not touch then return end
 	local character = player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart")
 	local folder = workspace:FindFirstChild("PrismoraEnemies")
@@ -288,7 +287,10 @@ end
 
 local function requestAttack()
 	if cooldowns.Attack > os.clock() then return end
-	aimAssist(30, 0.34)
+	-- A light assist also runs on PC. It only selects an enemy already in front
+	-- of the character, so mouse attacks feel responsive without auto-aiming
+	-- across the arena.
+	aimAssist(touch and 30 or 22, touch and 0.34 or 0.58)
 	startCooldown(attack, "Attack", weaponCooldown)
 	combatRemote:FireServer("Attack")
 end
@@ -326,9 +328,13 @@ hero.Activated:Connect(requestHero)
 weapon.Activated:Connect(requestWeapon)
 
 UserInputService.InputBegan:Connect(function(input, processed)
-	if processed then return end
 	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		-- Roblox Studio can mark a world click as processed by CoreGui. Mouse
+		-- attacks must still work unless the player is actually typing.
+		if UserInputService:GetFocusedTextBox() then return end
 		requestAttack()
+	elseif processed then
+		return
 	elseif input.KeyCode == Enum.KeyCode.Q or input.KeyCode == Enum.KeyCode.ButtonX then
 		requestSkill()
 	elseif input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.ButtonB then
@@ -337,6 +343,16 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		requestHero()
 	elseif input.KeyCode == Enum.KeyCode.F or input.KeyCode == Enum.KeyCode.DPadRight then
 		requestWeapon()
+	end
+end)
+
+-- PlayerMouse is kept as a PC fallback because some Studio/CoreGui layouts
+-- consume MouseButton1 before UserInputService reports it to the experience.
+-- The shared cooldown makes the two listeners safe: one physical click can
+-- only send one attack.
+player:GetMouse().Button1Down:Connect(function()
+	if not UserInputService:GetFocusedTextBox() then
+		requestAttack()
 	end
 end)
 

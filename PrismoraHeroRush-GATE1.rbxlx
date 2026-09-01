@@ -90,16 +90,29 @@ local WEAPON_DISPLAY_LENGTH = {
 	Frantuma = 5.65,
 }
 local WEAPON_GRIP_CFRAMES = {
-	Scintilla = CFrame.new(0, -0.05, -0.08),
-	Pulsar = CFrame.new(0, -0.18, -0.16),
-	Raggialama = CFrame.new(0, -0.28, -0.12) * CFrame.Angles(math.rad(56), math.rad(-6), math.rad(-14)),
-	Frantuma = CFrame.new(0, -0.30, -0.10) * CFrame.Angles(math.rad(62), 0, math.rad(-16)),
+	Scintilla = CFrame.new(0, 0, -0.03),
+	Pulsar = CFrame.new(0, -0.06, -0.05),
+	Raggialama = CFrame.new(0, -0.04, -0.02) * CFrame.Angles(math.rad(-58), math.rad(-8), math.rad(-14)),
+	Frantuma = CFrame.new(0, -0.05, -0.02) * CFrame.Angles(math.rad(-64), 0, math.rad(-16)),
+}
+local WEAPON_GLOW_COLORS = {
+	Scintilla = { Color3.fromRGB(0, 255, 108), Color3.fromRGB(70, 224, 255) },
+	Pulsar = { Color3.fromRGB(70, 224, 255), Color3.fromRGB(255, 44, 146) },
+	Raggialama = { Color3.fromRGB(0, 255, 108), Color3.fromRGB(70, 224, 255) },
+	Frantuma = { Color3.fromRGB(255, 44, 146), Color3.fromRGB(0, 255, 108) },
 }
 local WEAPON_DATA = {
 	Scintilla = { damage = 19, finisher = 31, cooldown = 0.31, box = Vector3.new(9, 8, 10), offset = 5 },
 	Pulsar = { damage = 21, finisher = 32, cooldown = 0.48, box = Vector3.new(8, 8, 58), offset = 29 },
 	Raggialama = { damage = 25, finisher = 39, cooldown = 0.38, box = Vector3.new(11, 9, 12), offset = 6 },
 	Frantuma = { damage = 39, finisher = 62, cooldown = 0.72, box = Vector3.new(16, 11, 13), offset = 6.5 },
+}
+
+local WEAPON_ARM_POSES = {
+	Scintilla = CFrame.Angles(math.rad(-32), math.rad(-8), math.rad(18)),
+	Pulsar = CFrame.Angles(math.rad(-68), math.rad(-5), math.rad(12)),
+	Raggialama = CFrame.Angles(math.rad(-48), math.rad(10), math.rad(24)),
+	Frantuma = CFrame.Angles(math.rad(-42), math.rad(12), math.rad(28)),
 }
 
 local function getStat(player, name)
@@ -230,6 +243,20 @@ end
 local importedWeaponTemplates = {}
 local importedWeaponUnavailable = {}
 
+local function poseWeaponArm(character, weaponName)
+	local shoulder = character:FindFirstChild("RightShoulder", true) or character:FindFirstChild("Right Shoulder", true)
+	if not shoulder or not shoulder:IsA("Motor6D") then return end
+	local original = shoulder:GetAttribute("PrismoraOriginalC0")
+	if typeof(original) ~= "CFrame" then
+		original = shoulder.C0
+		shoulder:SetAttribute("PrismoraOriginalC0", original)
+	end
+	local target = original * (WEAPON_ARM_POSES[weaponName] or CFrame.identity)
+	TweenService:Create(shoulder, TweenInfo.new(0.18, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+		C0 = target,
+	}):Play()
+end
+
 local function importedWeaponClone(weaponName)
 	local assetId = WEAPON_ASSET_IDS[weaponName]
 	if not assetId or importedWeaponUnavailable[weaponName] then return nil end
@@ -314,6 +341,95 @@ local function attachImportedWeapon(character, hand, weaponName)
 
 	local trailSource = weapon:FindFirstChild(weaponName .. "V2_Energy", true) or primary
 	if trailSource:IsA("BasePart") then
+		local glowColors = WEAPON_GLOW_COLORS[weaponName] or { Color3.fromRGB(70, 224, 255), Color3.fromRGB(255, 95, 162) }
+		trailSource.Material = Enum.Material.Neon
+		trailSource.Color = glowColors[1]
+		trailSource.Transparency = 0.03
+		trailSource.CastShadow = false
+
+		local reactorLight = Instance.new("PointLight")
+		reactorLight.Name = "WeaponReactorLight"
+		reactorLight.Color = glowColors[1]
+		reactorLight.Brightness = 2.4
+		reactorLight.Range = weaponName == "Scintilla" and 9 or 12
+		reactorLight.Shadows = false
+		reactorLight.Parent = trailSource
+		TweenService:Create(reactorLight, TweenInfo.new(0.85, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+			Brightness = 4.2,
+			Color = glowColors[2],
+		}):Play()
+		TweenService:Create(trailSource, TweenInfo.new(1.05, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+			Transparency = 0.15,
+		}):Play()
+
+		local aura = Instance.new("Highlight")
+		aura.Name = "WeaponEnergyAura"
+		aura.Adornee = trailSource
+		aura.DepthMode = Enum.HighlightDepthMode.Occluded
+		aura.FillColor = glowColors[1]
+		aura.FillTransparency = 0.48
+		aura.OutlineColor = glowColors[2]
+		aura.OutlineTransparency = 0.03
+		aura.Parent = weapon
+
+		local silhouetteAura = Instance.new("Highlight")
+		silhouetteAura.Name = "WeaponSilhouetteAura"
+		silhouetteAura.Adornee = weapon
+		silhouetteAura.DepthMode = Enum.HighlightDepthMode.Occluded
+		silhouetteAura.FillColor = glowColors[1]
+		silhouetteAura.FillTransparency = 0.90
+		silhouetteAura.OutlineColor = glowColors[2]
+		silhouetteAura.OutlineTransparency = 0.06
+		silhouetteAura.Parent = weapon
+
+		local glowShell = trailSource:Clone()
+		glowShell.Name = "WeaponEnergyGlowShell"
+		for _, child in glowShell:GetDescendants() do
+			if child:IsA("SurfaceAppearance") or child:IsA("Light") or child:IsA("ParticleEmitter") then
+				child:Destroy()
+			end
+		end
+		glowShell.Size = trailSource.Size * 1.045
+		glowShell.CFrame = trailSource.CFrame
+		glowShell.Material = Enum.Material.Neon
+		glowShell.Color = glowColors[2]
+		glowShell.Transparency = 0.46
+		glowShell.CastShadow = false
+		glowShell.CanCollide = false
+		glowShell.CanTouch = false
+		glowShell.CanQuery = false
+		glowShell.Massless = true
+		glowShell.Parent = weapon
+		local glowWeld = Instance.new("WeldConstraint")
+		glowWeld.Part0 = primary
+		glowWeld.Part1 = glowShell
+		glowWeld.Parent = glowShell
+
+		local sparks = Instance.new("ParticleEmitter")
+		sparks.Name = "WeaponEnergySparks"
+		sparks.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+		sparks.Color = ColorSequence.new(glowColors[1], glowColors[2])
+		sparks.LightEmission = 1
+		sparks.LightInfluence = 0
+		sparks.Rate = weaponName == "Scintilla" and 12 or 8
+		sparks.Lifetime = NumberRange.new(0.22, 0.48)
+		sparks.Speed = NumberRange.new(0.15, 0.75)
+		sparks.Drag = 1.8
+		sparks.SpreadAngle = Vector2.new(180, 180)
+		sparks.Rotation = NumberRange.new(0, 360)
+		sparks.RotSpeed = NumberRange.new(-140, 140)
+		sparks.Size = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.13),
+			NumberSequenceKeypoint.new(0.35, 0.08),
+			NumberSequenceKeypoint.new(1, 0),
+		})
+		sparks.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.05),
+			NumberSequenceKeypoint.new(0.72, 0.25),
+			NumberSequenceKeypoint.new(1, 1),
+		})
+		sparks.Parent = trailSource
+
 		local trailAxis = "Y"
 		local trailLength = trailSource.Size.Y
 		if trailSource.Size.X > trailLength then
@@ -339,9 +455,10 @@ local function attachImportedWeapon(character, hand, weaponName)
 		trail.Name = "AttackTrail"
 		trail.Attachment0 = topAttachment
 		trail.Attachment1 = bottomAttachment
-		trail.Color = ColorSequence.new(Color3.fromRGB(70, 224, 255), Color3.fromRGB(255, 95, 162))
-		trail.Lifetime = 0.24
-		trail.LightEmission = 0.8
+		trail.Color = ColorSequence.new(glowColors[1], glowColors[2])
+		trail.Lifetime = 0.28
+		trail.LightEmission = 1
+		trail.LightInfluence = 0
 		trail.Enabled = false
 		trail.Parent = trailSource
 	end
@@ -367,6 +484,7 @@ local function attachWeapon(character, weaponName)
 		warn(string.format("PRISMORA_WEAPON_MISSING name=%s; no legacy fallback is allowed", weaponName))
 		return false
 	end
+	poseWeaponArm(character, weaponName)
 	return true
 end
 
@@ -501,6 +619,50 @@ local function flashWeapon(character, duration)
 	end
 end
 
+local function showAttackArc(character, weaponName, combo)
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if not root then return end
+
+	local colors = WEAPON_GLOW_COLORS[weaponName] or {
+		Color3.fromRGB(70, 224, 255),
+		Color3.fromRGB(255, 95, 162),
+	}
+	local radius = weaponName == "Frantuma" and 8.2 or (weaponName == "Pulsar" and 6.2 or 7.1)
+	local segmentCount = 9
+	for index = 1, segmentCount do
+		local alpha = (index - 1) / (segmentCount - 1)
+		local angle = math.rad(-68 + (136 * alpha))
+		local forward = root.CFrame.LookVector
+		local right = root.CFrame.RightVector
+		local position = root.Position
+			+ (forward * (3.6 + math.cos(angle) * radius))
+			+ (right * (math.sin(angle) * radius))
+			+ Vector3.new(0, 1.6 + math.sin(alpha * math.pi) * 1.2, 0)
+
+		local slash = Instance.new("Part")
+		slash.Name = "PrismoraAttackArc"
+		slash.Anchored = true
+		slash.CanCollide = false
+		slash.CanTouch = false
+		slash.CanQuery = false
+		slash.Material = Enum.Material.Neon
+		slash.Color = colors[((index + combo) % 2) + 1]
+		slash.Transparency = 0.08
+		slash.Size = Vector3.new(combo == 3 and 0.34 or 0.22, 0.32, radius * 0.52)
+		slash.CFrame = CFrame.lookAt(position, position + forward)
+			* CFrame.Angles(0, angle, math.rad(20 - (40 * alpha)))
+		slash.Parent = workspace
+
+		TweenService:Create(slash, TweenInfo.new(0.18, Enum.EasingStyle.Quint), {
+			Transparency = 1,
+			Size = slash.Size * 1.35,
+		}):Play()
+		task.delay(0.2, function()
+			if slash.Parent then slash:Destroy() end
+		end)
+	end
+end
+
 local function addHeroCharge(player, amount)
 	local state = playerState[player]
 	if not state or state.heroActive then return end
@@ -621,6 +783,10 @@ remote.OnServerEvent:Connect(function(player, action)
 	if action == "Attack" and now >= state.attack then
 		local weaponName = WEAPON_ORDER[state.weaponIndex or 1]
 		local weaponData = WEAPON_DATA[weaponName]
+		if not state.attackLogged then
+			state.attackLogged = true
+			print(string.format("PRISMORA_ATTACK_RECEIVED player=%s weapon=%s", player.Name, weaponName))
+		end
 		state.attack = now + weaponData.cooldown
 		state.combo = (state.combo % 3) + 1
 		local damage = state.combo == 3 and weaponData.finisher or weaponData.damage
@@ -632,6 +798,7 @@ remote.OnServerEvent:Connect(function(player, action)
 			end
 		end
 		flashWeapon(character, 0.24)
+		showAttackArc(character, weaponName, state.combo)
 		remote:FireClient(player, "AttackFeedback", state.combo, hitCount, weaponName)
 	elseif action == "Skill" and now >= state.skill then
 		state.skill = now + 7
@@ -1410,9 +1577,9 @@ local function addPostProcessing()
 
 	local bloom = Instance.new("BloomEffect")
 	bloom.Name = "PrismoraBloom"
-	bloom.Intensity = 0.28
-	bloom.Size = 16
-	bloom.Threshold = 1.35
+	bloom.Intensity = 0.58
+	bloom.Size = 26
+	bloom.Threshold = 0.88
 	bloom:SetAttribute("PrismoraEffect", true)
 	bloom.Parent = Lighting
 
@@ -2156,7 +2323,6 @@ local function startCooldown(button, key, duration)
 end
 
 local function aimAssist(maxDistance, minDot)
-	if not touch then return end
 	local character = player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart")
 	local folder = workspace:FindFirstChild("PrismoraEnemies")
@@ -2186,7 +2352,10 @@ end
 
 local function requestAttack()
 	if cooldowns.Attack > os.clock() then return end
-	aimAssist(30, 0.34)
+	-- A light assist also runs on PC. It only selects an enemy already in front
+	-- of the character, so mouse attacks feel responsive without auto-aiming
+	-- across the arena.
+	aimAssist(touch and 30 or 22, touch and 0.34 or 0.58)
 	startCooldown(attack, "Attack", weaponCooldown)
 	combatRemote:FireServer("Attack")
 end
@@ -2224,9 +2393,13 @@ hero.Activated:Connect(requestHero)
 weapon.Activated:Connect(requestWeapon)
 
 UserInputService.InputBegan:Connect(function(input, processed)
-	if processed then return end
 	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		-- Roblox Studio can mark a world click as processed by CoreGui. Mouse
+		-- attacks must still work unless the player is actually typing.
+		if UserInputService:GetFocusedTextBox() then return end
 		requestAttack()
+	elseif processed then
+		return
 	elseif input.KeyCode == Enum.KeyCode.Q or input.KeyCode == Enum.KeyCode.ButtonX then
 		requestSkill()
 	elseif input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.ButtonB then
@@ -2235,6 +2408,16 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		requestHero()
 	elseif input.KeyCode == Enum.KeyCode.F or input.KeyCode == Enum.KeyCode.DPadRight then
 		requestWeapon()
+	end
+end)
+
+-- PlayerMouse is kept as a PC fallback because some Studio/CoreGui layouts
+-- consume MouseButton1 before UserInputService reports it to the experience.
+-- The shared cooldown makes the two listeners safe: one physical click can
+-- only send one attack.
+player:GetMouse().Button1Down:Connect(function()
+	if not UserInputService:GetFocusedTextBox() then
+		requestAttack()
 	end
 end)
 
