@@ -43,7 +43,22 @@ local ENEMY_DATA = {
 
 local WEAPON_ORDER = { "Scintilla", "Pulsar", "Raggialama", "Frantuma" }
 local WEAPON_ASSET_IDS = {
+	Scintilla = 112976542024708,
+	Pulsar = 72359682918429,
 	Raggialama = 94748150816254,
+	Frantuma = 105007115249197,
+}
+local WEAPON_DISPLAY_LENGTH = {
+	Scintilla = 2.15,
+	Pulsar = 3.35,
+	Raggialama = 5.25,
+	Frantuma = 5.65,
+}
+local WEAPON_GRIP_CFRAMES = {
+	Scintilla = CFrame.new(0, -0.05, -0.08),
+	Pulsar = CFrame.new(0, -0.18, -0.16),
+	Raggialama = CFrame.new(0, -0.28, -0.12) * CFrame.Angles(math.rad(56), math.rad(-6), math.rad(-14)),
+	Frantuma = CFrame.new(0, -0.30, -0.10) * CFrame.Angles(math.rad(62), 0, math.rad(-16)),
 }
 local WEAPON_DATA = {
 	Scintilla = { damage = 19, finisher = 31, cooldown = 0.31, box = Vector3.new(9, 8, 10), offset = 5 },
@@ -208,7 +223,10 @@ end
 local function attachImportedWeapon(character, hand, weaponName)
 	local weapon = importedWeaponClone(weaponName)
 	if not weapon then return nil end
-	local primary = weapon:FindFirstChild("RaggialamaV2_Body", true)
+	local primary = weapon:FindFirstChild("WeaponGripMarker", true)
+	if not primary or not primary:IsA("BasePart") then
+		primary = weapon:FindFirstChild("RaggialamaV2_Body", true)
+	end
 	if not primary or not primary:IsA("BasePart") then
 		primary = weapon:FindFirstChildWhichIsA("BasePart", true)
 	end
@@ -224,7 +242,8 @@ local function attachImportedWeapon(character, hand, weaponName)
 	local _, initialSize = weapon:GetBoundingBox()
 	local longest = math.max(initialSize.X, initialSize.Y, initialSize.Z)
 	if longest > 0.01 then
-		weapon:ScaleTo(weapon:GetScale() * (6.6 / longest))
+		local desiredLength = WEAPON_DISPLAY_LENGTH[weaponName] or 4.5
+		weapon:ScaleTo(weapon:GetScale() * (desiredLength / longest))
 	end
 
 	for _, item in weapon:GetDescendants() do
@@ -234,6 +253,9 @@ local function attachImportedWeapon(character, hand, weaponName)
 			item.CanTouch = false
 			item.CanQuery = false
 			item.Massless = true
+			if item.Name == "WeaponGripMarker" then
+				item.Transparency = 1
+			end
 			if item ~= primary then
 				local weld = Instance.new("WeldConstraint")
 				weld.Part0 = primary
@@ -247,17 +269,36 @@ local function attachImportedWeapon(character, hand, weaponName)
 	grip.Name = "WeaponGrip"
 	grip.Part0 = hand
 	grip.Part1 = primary
-	grip.C0 = CFrame.new(0, -0.84, 0) * CFrame.Angles(0, 0, math.rad(180))
+	if primary.Name == "WeaponGripMarker" then
+		grip.C0 = WEAPON_GRIP_CFRAMES[weaponName] or CFrame.new(0, -0.20, -0.10)
+	else
+		grip.C0 = CFrame.new(0, -0.84, 0) * CFrame.Angles(0, 0, math.rad(180))
+	end
 	grip.C1 = CFrame.identity
 	grip.Parent = hand
 
-	local trailSource = weapon:FindFirstChild("RaggialamaV2_Energy", true) or primary
+	local trailSource = weapon:FindFirstChild(weaponName .. "V2_Energy", true) or primary
 	if trailSource:IsA("BasePart") then
+		local trailAxis = "Y"
+		local trailLength = trailSource.Size.Y
+		if trailSource.Size.X > trailLength then
+			trailAxis = "X"
+			trailLength = trailSource.Size.X
+		end
+		if trailSource.Size.Z > trailLength then
+			trailAxis = "Z"
+			trailLength = trailSource.Size.Z
+		end
+		local function trailPoint(amount)
+			if trailAxis == "X" then return Vector3.new(amount, 0, 0) end
+			if trailAxis == "Z" then return Vector3.new(0, 0, amount) end
+			return Vector3.new(0, amount, 0)
+		end
 		local topAttachment = Instance.new("Attachment")
-		topAttachment.Position = Vector3.new(0, -trailSource.Size.Y * 0.46, 0)
+		topAttachment.Position = trailPoint(-trailLength * 0.46)
 		topAttachment.Parent = trailSource
 		local bottomAttachment = Instance.new("Attachment")
-		bottomAttachment.Position = Vector3.new(0, trailSource.Size.Y * 0.46, 0)
+		bottomAttachment.Position = trailPoint(trailLength * 0.46)
 		bottomAttachment.Parent = trailSource
 		local trail = Instance.new("Trail")
 		trail.Name = "AttackTrail"
@@ -409,6 +450,17 @@ local function attachWeapon(character, weaponName)
 	trail.Enabled = false
 	trail.Parent = trailSource
 end
+
+-- Preload the Blender arsenal without delaying character spawn. Cycling weapons
+-- is then immediate on PC and mobile, and a failed private asset still uses the
+-- procedural fallback above.
+task.spawn(function()
+	for _, weaponName in WEAPON_ORDER do
+		local probe = importedWeaponClone(weaponName)
+		if probe then probe:Destroy() end
+		task.wait()
+	end
+end)
 
 local function awardDefeat(player, enemy)
 	local defeats = getStat(player, "Sconfitte")

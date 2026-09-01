@@ -1,0 +1,25 @@
+{
+  "account": "Mrdrew",
+  "creator_user_id": 9614239714,
+  "ok": true,
+  "weapons": [
+    {
+      "name": "Scintilla",
+      "ok": true,
+      "asset_id": 112976542024708,
+      "revision_id": 1
+    },
+    {
+      "name": "Pulsar",
+      "ok": true,
+      "asset_id": 72359682918429,
+      "revision_id": 1
+    },
+    {
+      "name": "Frantuma",
+      "ok": true,
+      "asset_id": 105007115249197,
+      "revision_id": 1
+    }
+  ]
+}

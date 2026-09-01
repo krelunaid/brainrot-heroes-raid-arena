@@ -229,7 +229,10 @@ def create_weapon():
 
     body_obj = join_named(body, "RaggialamaV2_Body")
     glow_obj = join_named(glow, "RaggialamaV2_Energy")
-    return body_obj, glow_obj
+    marker = box("WeaponGripMarker", (0.0, -1.18, 0.0), (0.12, 0.12, 0.12), obsidian, bevel=0.0)
+    marker.hide_render = True
+    marker.display_type = "WIRE"
+    return body_obj, glow_obj, marker
 
 
 def triangle_count(objects):
@@ -369,12 +372,12 @@ def export_fbx(objects):
 def main():
     OUTPUT.mkdir(parents=True, exist_ok=True)
     clear_scene()
-    body, energy = create_weapon()
-    objects = (body, energy)
+    body, energy, grip_marker = create_weapon()
+    objects = (body, energy, grip_marker)
     triangles = triangle_count(objects)
     if triangles > 18000:
         raise RuntimeError(f"Weapon exceeds mobile triangle budget: {triangles}")
-    setup_render(objects)
+    setup_render((body, energy))
     body_texture = bake_color_texture(body, "Prismora_Raggialama_V2_Body")
     energy_texture = bake_color_texture(energy, "Prismora_Raggialama_V2_Energy", emissive=True)
     export_fbx(objects)

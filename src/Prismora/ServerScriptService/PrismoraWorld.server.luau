@@ -399,6 +399,7 @@ end
 -- island mesh. Its collision hull can report a point inside the floating rock.
 -- This fixed point is open, safe, and immediately shows the larger world.
 local spawnPosition = workspace:GetAttribute("PrismoraSpawnPoint") or Vector3.new(0, 70, 0)
+local fallRecoveryHeight = math.max(FALL_RECOVERY_Y, spawnPosition.Y - 22)
 
 local spawn = Instance.new("SpawnLocation")
 spawn.Name = "PrismoraSpawn"
@@ -422,13 +423,13 @@ glow.Parent = spawn
 -- Touched events can be skipped when a fast character tunnels through a thin
 -- part. Polling also recovers a player before Roblox destroys the character.
 local lastSafeCFrame = {}
-local airStillSince = {}
+local unsupportedSince = {}
 local recoveryRayParams = RaycastParams.new()
 recoveryRayParams.FilterType = Enum.RaycastFilterType.Include
 recoveryRayParams.FilterDescendantsInstances = { world }
 
 local function safeGroundBelow(root)
-	local result = workspace:Raycast(root.Position + Vector3.new(0, 2, 0), Vector3.new(0, -12, 0), recoveryRayParams)
+	local result = workspace:Raycast(root.Position + Vector3.new(0, 2, 0), Vector3.new(0, -40, 0), recoveryRayParams)
 	if not result then
 		return nil
 	end
@@ -454,7 +455,7 @@ end
 
 Players.PlayerRemoving:Connect(function(player)
 	lastSafeCFrame[player] = nil
-	airStillSince[player] = nil
+	unsupportedSince[player] = nil
 end)
 
 task.spawn(function()
@@ -466,12 +467,12 @@ task.spawn(function()
 			if humanoid and root and humanoid.Health > 0 then
 				local position = root.Position
 				local outside = math.abs(position.X) > WORLD_EDGE_LIMIT or math.abs(position.Z) > WORLD_EDGE_LIMIT
-				if position.Y < FALL_RECOVERY_Y or outside then
+				if position.Y < fallRecoveryHeight or outside then
 					character:PivotTo(recoveryCFrame(player))
 					root.AssemblyLinearVelocity = Vector3.zero
 					root.AssemblyAngularVelocity = Vector3.zero
 					humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
-					airStillSince[player] = nil
+					unsupportedSince[player] = nil
 				elseif humanoid.FloorMaterial ~= Enum.Material.Air and math.abs(root.AssemblyLinearVelocity.Y) < 12 then
 					local groundPosition = safeGroundBelow(root)
 					local look = root.CFrame.LookVector
@@ -481,18 +482,22 @@ task.spawn(function()
 						local safePosition = groundPosition + Vector3.new(0, 4, 0)
 						lastSafeCFrame[player] = CFrame.lookAt(safePosition, safePosition + flatLook.Unit)
 					end
-					airStillSince[player] = nil
-				elseif humanoid.FloorMaterial == Enum.Material.Air and root.AssemblyLinearVelocity.Magnitude < 1.5 then
-					airStillSince[player] = airStillSince[player] or os.clock()
-					if os.clock() - airStillSince[player] >= 1.5 then
+					unsupportedSince[player] = nil
+				elseif humanoid.FloorMaterial == Enum.Material.Air then
+					if safeGroundBelow(root) then
+						unsupportedSince[player] = nil
+					else
+						unsupportedSince[player] = unsupportedSince[player] or os.clock()
+					end
+					if unsupportedSince[player] and os.clock() - unsupportedSince[player] >= 0.65 then
 						character:PivotTo(recoveryCFrame(player))
 						root.AssemblyLinearVelocity = Vector3.zero
 						root.AssemblyAngularVelocity = Vector3.zero
 						humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
-						airStillSince[player] = nil
+						unsupportedSince[player] = nil
 					end
 				else
-					airStillSince[player] = nil
+					unsupportedSince[player] = nil
 				end
 			end
 		end
