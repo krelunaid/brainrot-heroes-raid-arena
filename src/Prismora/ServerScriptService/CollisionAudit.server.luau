@@ -19,14 +19,24 @@ local samples = 0
 local holes = 0
 local maxDeviation = 0
 for _, surface in surfaces do
-	local expectedY = surface.Position.Y + (surface.Size.Y * 0.5)
+	local isVerticalCylinder = surface.Shape == Enum.PartType.Cylinder
+	local expectedY = surface.Position.Y + ((if isVerticalCylinder then surface.Size.X else surface.Size.Y) * 0.5)
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Include
 	params.FilterDescendantsInstances = { surface }
-	for x = -surface.Size.X * 0.48, surface.Size.X * 0.48, 4 do
-		for z = -surface.Size.Z * 0.48, surface.Size.Z * 0.48, 4 do
+	local sampleWidth = if isVerticalCylinder then surface.Size.Y else surface.Size.X
+	local sampleDepth = surface.Size.Z
+	for x = -sampleWidth * 0.48, sampleWidth * 0.48, 4 do
+		for z = -sampleDepth * 0.48, sampleDepth * 0.48, 4 do
+			-- A cylinder's bounding box has empty corners by design. They are not
+			-- floor holes, so only audit points inside its circular footprint.
+			if isVerticalCylinder and ((x / (sampleWidth * 0.5)) ^ 2 + (z / (sampleDepth * 0.5)) ^ 2) > 0.92 then
+				continue
+			end
 			samples += 1
-			local origin = surface.CFrame:PointToWorldSpace(Vector3.new(x, 18, z))
+			local origin = if isVerticalCylinder
+				then Vector3.new(surface.Position.X + x, expectedY + 18, surface.Position.Z + z)
+				else surface.CFrame:PointToWorldSpace(Vector3.new(x, 18, z))
 			local result = workspace:Raycast(origin, Vector3.new(0, -40, 0), params)
 			if not result then
 				holes += 1

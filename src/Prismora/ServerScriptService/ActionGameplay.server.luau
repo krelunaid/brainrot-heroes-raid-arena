@@ -28,7 +28,7 @@ local combatHalfSizeZ = workspace:GetAttribute("PrismoraCombatHalfSizeZ") or 48
 local playerState = {}
 local runState = { stage = 0, defeats = 0, runNumber = 0 }
 local activeModifier = "NESSUNO"
-local currentPhaseText = "INCURSIONE IN PREPARAZIONE"
+local currentPhaseText = "CAPITALE • ENTRA NEL PORTALE DORATO"
 local registerDefeat
 
 local ENEMY_DATA = {
@@ -60,12 +60,12 @@ local ENEMY_DISPLAY_HEIGHT = {
 	Monolite = 15.8,
 }
 local ENEMY_GLOW_COLORS = {
-	Scheggino = Color3.fromRGB(48, 224, 255),
-	Rapido = Color3.fromRGB(80, 255, 192),
-	Gonfio = Color3.fromRGB(255, 62, 155),
-	Tessitore = Color3.fromRGB(92, 255, 154),
-	Guscione = Color3.fromRGB(184, 92, 255),
-	GuscioneElite = Color3.fromRGB(255, 90, 218),
+	Scheggino = Color3.fromRGB(255, 122, 47),
+	Rapido = Color3.fromRGB(255, 122, 47),
+	Gonfio = Color3.fromRGB(255, 122, 47),
+	Tessitore = Color3.fromRGB(255, 122, 47),
+	Guscione = Color3.fromRGB(255, 122, 47),
+	GuscioneElite = Color3.fromRGB(255, 122, 47),
 	Monolite = Color3.fromRGB(255, 91, 38),
 }
 
@@ -218,8 +218,11 @@ local function attachImportedEnemyVisual(model, root, kind)
 				item.CastShadow = false
 			elseif string.find(item.Name, "Energy") then
 				energyPart = item
+				item.Color = Color3.fromRGB(255, 122, 47)
 				item.Material = Enum.Material.Neon
 				item.CastShadow = false
+			else
+				item.Color = Color3.fromRGB(74, 70, 88)
 			end
 			local weld = Instance.new("WeldConstraint")
 			weld.Part0 = root
@@ -860,7 +863,7 @@ local function createSolaris(player)
 	end)
 end
 
-remote.OnServerEvent:Connect(function(player, action)
+remote.OnServerEvent:Connect(function(player, action, requestedSlot)
 	local state = playerState[player]
 	local character = player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
@@ -906,12 +909,17 @@ remote.OnServerEvent:Connect(function(player, action)
 		remote:FireClient(player, "DashFeedback", 1.2)
 	elseif action == "SummonHero" then
 		createSolaris(player)
-	elseif action == "CycleWeapon" and now >= (state.cycle or 0) then
+	elseif (action == "CycleWeapon" or action == "SelectWeapon") and now >= (state.cycle or 0) then
+		if not player:GetAttribute("PrismoraSecondWeaponUnlocked") then return end
 		state.cycle = now + 0.35
-		state.weaponIndex = ((state.weaponIndex or 1) % #WEAPON_ORDER) + 1
+		if action == "SelectWeapon" then
+			state.weaponIndex = requestedSlot == 2 and 3 or 1
+		else
+			state.weaponIndex = (state.weaponIndex or 1) == 1 and 3 or 1
+		end
 		local weaponName = WEAPON_ORDER[state.weaponIndex]
 		attachWeapon(character, weaponName)
-		remote:FireClient(player, "WeaponChanged", weaponName, state.weaponIndex, WEAPON_DATA[weaponName].cooldown)
+		remote:FireClient(player, "WeaponChanged", weaponName, state.weaponIndex == 1 and 1 or 2, WEAPON_DATA[weaponName].cooldown)
 	end
 end)
 
@@ -1189,10 +1197,41 @@ RunService.Heartbeat:Connect(function(deltaTime)
 	end
 end)
 
+local function cleanCombatSilhouette(player, character)
+	local blockedAttachments = { "Hand", "Grip", "Back", "Waist", "Shoulder", "Torso" }
+	for _, child in character:GetChildren() do
+		if child:IsA("Tool") then
+			child:Destroy()
+		elseif child:IsA("Accessory") then
+			local remove = false
+			for _, descendant in child:GetDescendants() do
+				if descendant:IsA("Attachment") then
+					for _, fragment in blockedAttachments do
+						if string.find(descendant.Name, fragment, 1, true) then
+							remove = true
+							break
+						end
+					end
+				end
+				if remove then break end
+			end
+			if remove then child:Destroy() end
+		end
+	end
+	local backpack = player:FindFirstChildOfClass("Backpack")
+	if backpack then
+		for _, item in backpack:GetChildren() do
+			if item:IsA("Tool") then item:Destroy() end
+		end
+	end
+end
+
 local function setupPlayer(player)
-	playerState[player] = { attack = 0, skill = 0, dash = 0, cycle = 0, combo = 0, heroCharge = 0, heroActive = false, weaponIndex = 3, protectedUntil = os.clock() + 4, nextDamage = 0, lastDamage = 0 }
+	player:SetAttribute("PrismoraSecondWeaponUnlocked", false)
+	playerState[player] = { attack = 0, skill = 0, dash = 0, cycle = 0, combo = 0, heroCharge = 0, heroActive = false, weaponIndex = 1, protectedUntil = os.clock() + 4, nextDamage = 0, lastDamage = 0 }
 	local function configureCharacter(character)
 		if playerState[player] then playerState[player].protectedUntil = os.clock() + 4 end
+		cleanCombatSilhouette(player, character)
 		local humanoid = character:WaitForChild("Humanoid")
 		humanoid.BreakJointsOnDeath = false
 		humanoid.MaxHealth = 140
@@ -1203,7 +1242,7 @@ local function setupPlayer(player)
 			remote:FireClient(player, "PlayerDown")
 		end)
 		task.wait(0.4)
-		local weaponIndex = playerState[player] and playerState[player].weaponIndex or 3
+		local weaponIndex = playerState[player] and playerState[player].weaponIndex or 1
 		local weaponName = WEAPON_ORDER[weaponIndex]
 		attachWeapon(character, weaponName)
 		remote:FireClient(player, "WeaponEquipped", weaponName, weaponIndex, WEAPON_DATA[weaponName].cooldown)
@@ -1244,6 +1283,28 @@ local function announcePhase(text)
 	remote:FireAllClients("RunPhase", text, activeModifier)
 end
 
+local function showSpawnTelegraph(position)
+	local marker = Instance.new("Part")
+	marker.Name = "EnemySpawnTelegraph"
+	marker.Anchored = true
+	marker.CanCollide = false
+	marker.CanTouch = false
+	marker.CanQuery = false
+	marker.Shape = Enum.PartType.Cylinder
+	marker.Material = Enum.Material.Neon
+	marker.Color = Color3.fromRGB(255, 122, 47)
+	marker.Transparency = 0.58
+	marker.Size = Vector3.new(0.18, 2, 2)
+	marker.CFrame = CFrame.new(position.X, combatCenter.Y - 1.88, position.Z) * CFrame.Angles(0, 0, math.rad(90))
+	marker.Parent = workspace
+	TweenService:Create(marker, TweenInfo.new(0.7, Enum.EasingStyle.Quint), {
+		Size = Vector3.new(0.18, 6, 6),
+		Transparency = 0.16,
+	}):Play()
+	task.wait(0.72)
+	marker:Destroy()
+end
+
 local function startStage(stage)
 	runState.stage = stage
 	runState.defeats = 0
@@ -1279,11 +1340,12 @@ local function startStage(stage)
 					spawnY,
 					combatCenter.Z + (math.sin(angle) * ring) - 8
 				))
+				showSpawnTelegraph(position)
 				local enemy = createEnemy(kind, position)
 				enemy:SetAttribute("OrbitSign", index % 2 == 0 and 1 or -1)
 				enemy:SetAttribute("TargetUserId", 0)
 				enemy:SetAttribute("AttackTokenUntil", 0)
-				task.wait(0.18)
+				task.wait(0.15)
 			end
 		end)
 	end
@@ -1296,6 +1358,21 @@ local function beginRun()
 	activeModifier = modifiers[((runState.runNumber - 1) % #modifiers) + 1]
 	remote:FireAllClients("RunModifier", activeModifier)
 	startStage(1)
+end
+
+local function waitForArenaPlayerThenBegin()
+	currentPhaseText = "CAPITALE • ENTRA NEL PORTALE DORATO"
+	remote:FireAllClients("RunPhase", currentPhaseText, "NESSUNO")
+	while enemies.Parent do
+		for _, player in Players:GetPlayers() do
+			local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+			if root and (root.Position - combatCenter).Magnitude <= 145 then
+				beginRun()
+				return
+			end
+		end
+		task.wait(0.35)
+	end
 end
 
 registerDefeat = function(kind)
@@ -1314,12 +1391,16 @@ registerDefeat = function(kind)
 			if fragments then
 				fragments.Value += teamReward
 			end
+			if not player:GetAttribute("PrismoraSecondWeaponUnlocked") then
+				player:SetAttribute("PrismoraSecondWeaponUnlocked", true)
+				remote:FireClient(player, "LoadoutUnlocked", "Raggialama")
+			end
 		end
 		remote:FireAllClients("RunComplete", runState.runNumber, teamReward)
-		task.delay(8, beginRun)
+		task.delay(8, waitForArenaPlayerThenBegin)
 	end
 end
 
-task.delay(1, beginRun)
+task.spawn(waitForArenaPlayerThenBegin)
 
 print("PRISMORA_ACTION_READY waves=adaptive separation=on attack_tokens=scaled solo_regen=on")

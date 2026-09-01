@@ -21,7 +21,10 @@ screen.Parent = playerGui
 
 task.spawn(function()
 	for _ = 1, 10 do
-		if pcall(function() StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList, false) end) then break end
+		if pcall(function()
+			StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList, false)
+			StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, false)
+		end) then break end
 		task.wait(0.25)
 	end
 end)
@@ -230,6 +233,7 @@ local weapon = makeActionButton(
 	UDim2.new(0, touch and 116 or 96, 1, touch and -190 or -32),
 	Vector2.new(0, 1)
 )
+weapon.Visible = false
 
 local cooldowns = { Attack = 0, Skill = 0, Dash = 0 }
 local heroReady = false
@@ -318,6 +322,7 @@ local function requestHero()
 end
 
 local function requestWeapon()
+	if not weapon.Visible then return end
 	combatRemote:FireServer("CycleWeapon")
 end
 
@@ -341,7 +346,18 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		requestDash()
 	elseif input.KeyCode == Enum.KeyCode.E or input.KeyCode == Enum.KeyCode.ButtonY then
 		requestHero()
+	elseif input.KeyCode == Enum.KeyCode.One then
+		combatRemote:FireServer("SelectWeapon", 1)
+	elseif input.KeyCode == Enum.KeyCode.Two then
+		combatRemote:FireServer("SelectWeapon", 2)
 	elseif input.KeyCode == Enum.KeyCode.F or input.KeyCode == Enum.KeyCode.DPadRight then
+		requestWeapon()
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input, processed)
+	if processed or not weapon.Visible then return end
+	if input.UserInputType == Enum.UserInputType.MouseWheel and math.abs(input.Position.Z) > 0 then
 		requestWeapon()
 	end
 end)
@@ -367,11 +383,15 @@ local lastMissFeedback = 0
 combatRemote.OnClientEvent:Connect(function(action, value, extra, detail)
 	if action == "WeaponEquipped" then
 		weaponCooldown = detail or weaponCooldown
-		objective.Text = touch and "ATTACCA • DASH • cambia ARMA" or "LMB attacca • Q potere • F cambia arma"
+		objective.Text = touch and "ATTACCA • POTERE • DASH" or "LMB attacca • Q potere • SHIFT dash"
 		showToast(string.upper(value or "SCINTILLA") .. " EQUIPAGGIATA", Color3.fromRGB(255, 201, 74))
 	elseif action == "WeaponChanged" then
 		weaponCooldown = detail or weaponCooldown
-		showToast("ARMA " .. tostring(extra or 1) .. "/4 • " .. string.upper(value or "SCINTILLA"), Color3.fromRGB(176, 118, 255))
+		showToast("ARMA " .. tostring(extra or 1) .. "/2 • " .. string.upper(value or "SCINTILLA"), Color3.fromRGB(176, 118, 255))
+	elseif action == "LoadoutUnlocked" then
+		weapon.Visible = true
+		objective.Text = touch and "NUOVA ARMA • PREMI ARMA" or "RAGGIALAMA SBLOCCATA • 1/2 O F"
+		showToast("LOADOUT 2 SBLOCCATO • " .. string.upper(value or "RAGGIALAMA"), Color3.fromRGB(255, 201, 74))
 	elseif action == "AttackFeedback" then
 		if extra and extra > 0 then
 			showToast(value == 3 and "COMBO! COLPO SPEZZAGUARDIA" or "COLPITO!", Color3.fromRGB(255, 233, 184))
@@ -423,7 +443,7 @@ combatRemote.OnClientEvent:Connect(function(action, value, extra, detail)
 	elseif action == "RunModifier" then
 		showToast("MODIFICATORE • " .. string.upper(value or "SCONOSCIUTO"), Color3.fromRGB(176, 118, 255))
 	elseif action == "RunPhase" then
-		title.Text = "ONDATA"
+		title.Text = string.find(value or "", "CAPITALE", 1, true) and "PRISMORA" or "ONDATA"
 		objective.Text = value or "COMBATTI"
 		if extra and extra ~= "NESSUNO" then
 			showToast(string.upper(extra), Color3.fromRGB(176, 118, 255))
@@ -458,7 +478,38 @@ questRemote.OnClientEvent:Connect(function(action, value)
 end)
 
 task.delay(0.8, function()
-	showToast(touch and "ATTACCA • POTERE • DASH • ARMA" or "WASD • LMB • Q • SHIFT • F CAMBIA ARMA", Color3.fromRGB(70, 224, 255))
+	showToast(touch and "ATTACCA • POTERE • DASH" or "WASD • LMB ATTACCA • Q POTERE • SHIFT DASH", Color3.fromRGB(70, 224, 255))
+end)
+
+-- The first seconds deliberately frame the capital as a place, not as a wall
+-- beside the spawn. Movement remains available as soon as the camera settles.
+task.spawn(function()
+	local capitalCenter
+	for _ = 1, 80 do
+		capitalCenter = workspace:GetAttribute("PrismoraCapitalCenter")
+		if typeof(capitalCenter) == "Vector3" and workspace.CurrentCamera then break end
+		task.wait(0.1)
+	end
+	if typeof(capitalCenter) ~= "Vector3" or not workspace.CurrentCamera then return end
+	local camera = workspace.CurrentCamera
+	camera.CameraType = Enum.CameraType.Scriptable
+	camera.FieldOfView = 76
+	camera.CFrame = CFrame.lookAt(
+		capitalCenter + Vector3.new(0, 54, 112),
+		capitalCenter + Vector3.new(0, 22, 0)
+	)
+	task.wait(1.9)
+	local settle = CFrame.lookAt(
+		capitalCenter + Vector3.new(0, 27, 78),
+		capitalCenter + Vector3.new(0, 16, 0)
+	)
+	local tween = TweenService:Create(camera, TweenInfo.new(0.85, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+		CFrame = settle,
+		FieldOfView = 72,
+	})
+	tween:Play()
+	tween.Completed:Wait()
+	camera.CameraType = Enum.CameraType.Custom
 end)
 
 local function fitHud()

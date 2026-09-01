@@ -1,0 +1,3386 @@
+<roblox version="4">
+  <Item class="Lighting" referent="0">
+    <Properties>
+      <string name="Name">Lighting</string>
+      <Color3 name="Ambient">
+        <R>0.294</R>
+        <G>0.306</G>
+        <B>0.361</B>
+      </Color3>
+      <float name="Brightness">2.5</float>
+      <float name="ClockTime">14.2</float>
+      <Color3 name="ColorShift_Top">
+        <R>0.02</R>
+        <G>0.01</G>
+        <B>0</B>
+      </Color3>
+      <float name="EnvironmentDiffuseScale">0.45</float>
+      <float name="EnvironmentSpecularScale">0.7</float>
+      <bool name="GlobalShadows">true</bool>
+      <Color3 name="OutdoorAmbient">
+        <R>0.49</R>
+        <G>0.502</G>
+        <B>0.569</B>
+      </Color3>
+      <token name="Technology">3</token>
+    </Properties>
+  </Item>
+  <Item class="ServerScriptService" referent="1">
+    <Properties>
+      <string name="Name">ServerScriptService</string>
+    </Properties>
+    <Item class="Script" referent="2">
+      <Properties>
+        <string name="Name">ActionGameplay</string>
+        <token name="RunContext">0</token>
+        <string name="Source"><![CDATA[local Players = game:GetService("Players")
+local InsertService = game:GetService("InsertService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local ServerStorage = game:GetService("ServerStorage")
+local TweenService = game:GetService("TweenService")
+
+Players.RespawnTime = 2
+
+repeat task.wait(0.1) until workspace:GetAttribute("PrismoraReady")
+
+local remote = ReplicatedStorage:FindFirstChild("PrismoraCombat") or Instance.new("RemoteEvent")
+remote.Name = "PrismoraCombat"
+remote.Parent = ReplicatedStorage
+
+local oldEnemies = workspace:FindFirstChild("PrismoraEnemies")
+if oldEnemies then
+	oldEnemies:Destroy()
+end
+
+local enemies = Instance.new("Folder")
+enemies.Name = "PrismoraEnemies"
+enemies.Parent = workspace
+
+local combatCenter = workspace:GetAttribute("PrismoraCombatCenter") or Vector3.new(0, 72, -20)
+local combatHalfSizeX = workspace:GetAttribute("PrismoraCombatHalfSizeX") or 48
+local combatHalfSizeZ = workspace:GetAttribute("PrismoraCombatHalfSizeZ") or 48
+local playerState = {}
+local runState = { stage = 0, defeats = 0, runNumber = 0 }
+local activeModifier = "NESSUNO"
+local currentPhaseText = "CAPITALE • ENTRA NEL PORTALE DORATO"
+local registerDefeat
+
+local ENEMY_DATA = {
+	Scheggino = { health = 55, speed = 9, damage = 7, range = 5.5, reward = 1, size = 3.2, color = Color3.fromRGB(74, 70, 88) },
+	Rapido = { health = 42, speed = 14, damage = 6, range = 5, reward = 1, size = 2.7, color = Color3.fromRGB(69, 114, 145) },
+	Gonfio = { health = 105, speed = 6.2, damage = 11, range = 6.2, reward = 2, size = 4.4, color = Color3.fromRGB(111, 69, 121) },
+	Tessitore = { health = 78, speed = 7.4, damage = 9, range = 9, reward = 2, size = 3.6, color = Color3.fromRGB(58, 112, 98) },
+	Guscione = { health = 170, speed = 5.5, damage = 13, range = 7, reward = 2, size = 5.4, color = Color3.fromRGB(74, 70, 88), armored = true },
+	GuscioneElite = { health = 285, speed = 4.8, damage = 17, range = 7.5, reward = 4, size = 6.4, color = Color3.fromRGB(83, 64, 105), armored = true },
+	Monolite = { health = 650, speed = 2.2, damage = 18, range = 18, reward = 8, size = 12, color = Color3.fromRGB(74, 70, 88) },
+}
+
+local ENEMY_ASSET_IDS = {
+	Scheggino = 102318791792375,
+	Rapido = 84606757772760,
+	Gonfio = 130104923205588,
+	Tessitore = 115265017026928,
+	Guscione = 112641211249559,
+	GuscioneElite = 112641211249559,
+	Monolite = 77520949932532,
+}
+local ENEMY_DISPLAY_HEIGHT = {
+	Scheggino = 4.4,
+	Rapido = 3.5,
+	Gonfio = 6.1,
+	Tessitore = 3.8,
+	Guscione = 4.7,
+	GuscioneElite = 6.2,
+	Monolite = 15.8,
+}
+local ENEMY_GLOW_COLORS = {
+	Scheggino = Color3.fromRGB(255, 122, 47),
+	Rapido = Color3.fromRGB(255, 122, 47),
+	Gonfio = Color3.fromRGB(255, 122, 47),
+	Tessitore = Color3.fromRGB(255, 122, 47),
+	Guscione = Color3.fromRGB(255, 122, 47),
+	GuscioneElite = Color3.fromRGB(255, 122, 47),
+	Monolite = Color3.fromRGB(255, 91, 38),
+}
+
+local WEAPON_ORDER = { "Scintilla", "Pulsar", "Raggialama", "Frantuma" }
+local WEAPON_ASSET_IDS = {
+	Scintilla = 112976542024708,
+	Pulsar = 72359682918429,
+	Raggialama = 94748150816254,
+	Frantuma = 105007115249197,
+}
+local WEAPON_DISPLAY_LENGTH = {
+	Scintilla = 2.15,
+	Pulsar = 3.35,
+	Raggialama = 5.25,
+	Frantuma = 5.65,
+}
+local WEAPON_GRIP_CFRAMES = {
+	Scintilla = CFrame.new(0, 0, -0.03),
+	Pulsar = CFrame.new(0, -0.06, -0.05),
+	-- The grip sits in front of the palm while drawn; the blade then projects
+	-- forward/up instead of crossing the torso like a holstered accessory.
+	Raggialama = CFrame.new(0.12, -0.08, -0.38) * CFrame.Angles(math.rad(-82), math.rad(-10), math.rad(8)),
+	Frantuma = CFrame.new(0, -0.05, -0.02) * CFrame.Angles(math.rad(-64), 0, math.rad(-16)),
+}
+local WEAPON_GLOW_COLORS = {
+	Scintilla = { Color3.fromRGB(0, 255, 108), Color3.fromRGB(70, 224, 255) },
+	Pulsar = { Color3.fromRGB(70, 224, 255), Color3.fromRGB(255, 44, 146) },
+	Raggialama = { Color3.fromRGB(0, 255, 108), Color3.fromRGB(70, 224, 255) },
+	Frantuma = { Color3.fromRGB(255, 44, 146), Color3.fromRGB(0, 255, 108) },
+}
+local WEAPON_DATA = {
+	Scintilla = { damage = 19, finisher = 31, cooldown = 0.31, box = Vector3.new(9, 8, 10), offset = 5 },
+	Pulsar = { damage = 21, finisher = 32, cooldown = 0.48, box = Vector3.new(8, 8, 58), offset = 29 },
+	Raggialama = { damage = 25, finisher = 39, cooldown = 0.38, box = Vector3.new(11, 9, 12), offset = 6 },
+	Frantuma = { damage = 39, finisher = 62, cooldown = 0.72, box = Vector3.new(16, 11, 13), offset = 6.5 },
+}
+
+local WEAPON_ARM_POSES = {
+	Scintilla = CFrame.Angles(math.rad(-32), math.rad(-8), math.rad(18)),
+	Pulsar = CFrame.Angles(math.rad(-68), math.rad(-5), math.rad(12)),
+	Raggialama = CFrame.Angles(math.rad(-68), math.rad(10), math.rad(18)),
+	Frantuma = CFrame.Angles(math.rad(-42), math.rad(12), math.rad(28)),
+}
+
+local function getStat(player, name)
+	local stats = player:FindFirstChild("leaderstats")
+	return stats and stats:FindFirstChild(name)
+end
+
+local function makePart(parent, name, size, color, material, shape)
+	local part = Instance.new("Part")
+	part.Name = name
+	part.Anchored = true
+	part.CanCollide = false
+	part.CanTouch = false
+	part.CanQuery = true
+	part.Size = size
+	part.Color = color
+	part.Material = material
+	part.Shape = shape or Enum.PartType.Block
+	part.Parent = parent
+	return part
+end
+
+local function updateHealthDisplay(enemy)
+	local root = enemy.PrimaryPart
+	local billboard = root and root:FindFirstChild("EnemyHealth")
+	local label = billboard and billboard:FindFirstChild("Value")
+	local health = enemy:GetAttribute("Health") or 0
+	local maxHealth = enemy:GetAttribute("MaxHealth") or 1
+	if label then
+		local percentage = math.max(0, math.ceil((health / maxHealth) * 100))
+		local enemyName = string.upper(enemy:GetAttribute("Kind") or "SPENTO")
+		label.Text = percentage >= 100 and enemyName or string.format("%s %d%%", enemyName, percentage)
+		if billboard and billboard:IsA("BillboardGui") then
+			billboard.Enabled = enemy:GetAttribute("Kind") == "Monolite" or health < maxHealth
+			if health < maxHealth and health > 0 then
+				local token = os.clock()
+				enemy:SetAttribute("HealthLabelToken", token)
+				task.delay(1.5, function()
+					if enemy.Parent and enemy:GetAttribute("HealthLabelToken") == token and billboard.Parent then
+						billboard.Enabled = false
+					end
+				end)
+			end
+		end
+	end
+end
+
+local importedEnemyTemplates = {}
+local importedEnemyUnavailable = {}
+
+local function importedEnemyClone(kind)
+	local assetKind = kind == "GuscioneElite" and "Guscione" or kind
+	local assetId = ENEMY_ASSET_IDS[kind]
+	if not assetId or importedEnemyUnavailable[assetKind] then return nil end
+	local template = importedEnemyTemplates[assetKind]
+	if not template then
+		local ok, container = pcall(function()
+			return InsertService:LoadAsset(assetId)
+		end)
+		if not ok or not container then
+			importedEnemyUnavailable[assetKind] = true
+			warn(string.format("PRISMORA_ENEMY_ASSET_FAILED name=%s asset=%d error=%s", assetKind, assetId, tostring(container)))
+			return nil
+		end
+		for _, item in container:GetDescendants() do
+			if item:IsA("LuaSourceContainer") then item:Destroy() end
+		end
+		container.Name = assetKind .. "EnemyTemplate"
+		container.Parent = ServerStorage
+		importedEnemyTemplates[assetKind] = container
+		template = container
+		print(string.format("PRISMORA_ENEMY_ASSET_READY name=%s asset=%d", assetKind, assetId))
+	end
+	return template:Clone()
+end
+
+local function attachImportedEnemyVisual(model, root, kind)
+	local visual = importedEnemyClone(kind)
+	if not visual then return false end
+	local marker = visual:FindFirstChild("EnemyRootMarker", true)
+	if not marker or not marker:IsA("BasePart") then
+		marker = visual:FindFirstChildWhichIsA("BasePart", true)
+	end
+	if not marker then
+		visual:Destroy()
+		return false
+	end
+
+	visual.Name = "EnemyVisual"
+	visual.Parent = model
+	visual.PrimaryPart = marker
+	local _, initialSize = visual:GetBoundingBox()
+	if initialSize.Y > 0.01 then
+		visual:ScaleTo(visual:GetScale() * ((ENEMY_DISPLAY_HEIGHT[kind] or 4.5) / initialSize.Y))
+	end
+	visual:PivotTo(root.CFrame)
+
+	local energyPart
+	for _, item in visual:GetDescendants() do
+		if item:IsA("BasePart") then
+			item.Anchored = false
+			item.CanCollide = false
+			item.CanTouch = false
+			item.CanQuery = false
+			item.Massless = true
+			if item.Name == "EnemyRootMarker" then
+				item.Transparency = 1
+				item.CastShadow = false
+			elseif string.find(item.Name, "Energy") then
+				energyPart = item
+				item.Color = Color3.fromRGB(255, 122, 47)
+				item.Material = Enum.Material.Neon
+				item.CastShadow = false
+			else
+				item.Color = Color3.fromRGB(74, 70, 88)
+			end
+			local weld = Instance.new("WeldConstraint")
+			weld.Part0 = root
+			weld.Part1 = item
+			weld.Parent = item
+		end
+	end
+
+	local glowColor = ENEMY_GLOW_COLORS[kind] or Color3.fromRGB(70, 224, 255)
+	if energyPart then
+		local light = Instance.new("PointLight")
+		light.Name = "EnemyCoreLight"
+		light.Color = glowColor
+		light.Brightness = kind == "Monolite" and 4.5 or 2.2
+		light.Range = kind == "Monolite" and 24 or 8
+		light.Shadows = false
+		light.Parent = energyPart
+		TweenService:Create(light, TweenInfo.new(0.72, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+			Brightness = kind == "Monolite" and 7 or 3.8,
+		}):Play()
+	end
+	local silhouette = Instance.new("Highlight")
+	silhouette.Name = "EnemySilhouette"
+	silhouette.Adornee = visual
+	silhouette.DepthMode = Enum.HighlightDepthMode.Occluded
+	silhouette.FillColor = glowColor
+	silhouette.FillTransparency = kind == "GuscioneElite" and 0.86 or 0.93
+	silhouette.OutlineColor = glowColor
+	silhouette.OutlineTransparency = kind == "Monolite" and 0.16 or 0.36
+	silhouette.Parent = visual
+	return true
+end
+
+local function createEnemy(kind, position)
+	local data = ENEMY_DATA[kind]
+	local healthMultiplier = activeModifier == "CORAZZA PRISMATICA" and 1.3 or 1
+	local speedMultiplier = activeModifier == "FURIA DEGLI SPENTI" and 1.25 or 1
+	local maxHealth = math.floor(data.health * healthMultiplier)
+	local model = Instance.new("Model")
+	model.Name = kind
+	model:SetAttribute("Kind", kind)
+	model:SetAttribute("Health", maxHealth)
+	model:SetAttribute("MaxHealth", maxHealth)
+	model:SetAttribute("MoveSpeed", data.speed * speedMultiplier)
+	model:SetAttribute("Dead", false)
+	model:SetAttribute("SpawnPosition", position)
+	model:SetAttribute("GroundY", position.Y)
+	model:SetAttribute("MotionSeed", math.random() * math.pi * 2)
+	model:SetAttribute("NextAttack", 0)
+	model.Parent = enemies
+
+	local root = makePart(
+		model,
+		"EnemyRoot",
+		Vector3.new(data.size, data.size, data.size),
+		data.color,
+		Enum.Material.Slate,
+		kind == "Monolite" and Enum.PartType.Block or Enum.PartType.Ball
+	)
+	root.CFrame = CFrame.new(position) * CFrame.Angles(0, math.rad(45), 0)
+	model.PrimaryPart = root
+	if kind == "Monolite" then root.Size = Vector3.new(9, 13, 7) end
+	local importedVisual = attachImportedEnemyVisual(model, root, kind)
+	root.Transparency = importedVisual and 1 or 0
+	root.CastShadow = not importedVisual
+
+	-- The primitive fallback exists only if Roblox temporarily refuses an asset.
+	if not importedVisual then
+		local coreSize = kind == "Monolite" and Vector3.new(1.2, 5.4, 0.8) or Vector3.new(data.size * 0.35, data.size * 0.35, data.size * 0.35)
+		local core = makePart(model, "WeakCore", coreSize, Color3.fromRGB(255, 122, 47), Enum.Material.Neon, kind == "Monolite" and Enum.PartType.Block or Enum.PartType.Ball)
+		core.CFrame = root.CFrame * CFrame.new(0, 0, -(data.size * 0.52))
+	end
+
+	local billboard = Instance.new("BillboardGui")
+	billboard.Name = "EnemyHealth"
+	billboard.AlwaysOnTop = false
+	billboard.MaxDistance = kind == "Monolite" and 130 or 34
+	billboard.StudsOffset = Vector3.new(0, data.size * 0.72 + 1.4, 0)
+	billboard.Size = UDim2.fromOffset(kind == "Monolite" and 190 or 82, kind == "Monolite" and 30 or 18)
+	billboard.Enabled = kind == "Monolite"
+	billboard.Parent = root
+
+	local label = Instance.new("TextLabel")
+	label.Name = "Value"
+	label.Size = UDim2.fromScale(1, 1)
+	label.BackgroundColor3 = Color3.fromRGB(19, 20, 30)
+	label.BackgroundTransparency = 0.12
+	label.TextColor3 = Color3.new(1, 1, 1)
+	label.Font = Enum.Font.GothamBlack
+	label.TextScaled = true
+	label.Parent = billboard
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 12)
+	corner.Parent = label
+
+	updateHealthDisplay(model)
+	return model
+end
+
+local importedWeaponTemplates = {}
+local importedWeaponUnavailable = {}
+
+local function poseWeaponArm(character, weaponName)
+	local shoulder = character:FindFirstChild("RightShoulder", true) or character:FindFirstChild("Right Shoulder", true)
+	if not shoulder or not shoulder:IsA("Motor6D") then return end
+	local original = shoulder:GetAttribute("PrismoraOriginalC0")
+	if typeof(original) ~= "CFrame" then
+		original = shoulder.C0
+		shoulder:SetAttribute("PrismoraOriginalC0", original)
+	end
+	local target = original * (WEAPON_ARM_POSES[weaponName] or CFrame.identity)
+	TweenService:Create(shoulder, TweenInfo.new(0.18, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+		C0 = target,
+	}):Play()
+end
+
+local function importedWeaponClone(weaponName)
+	local assetId = WEAPON_ASSET_IDS[weaponName]
+	if not assetId or importedWeaponUnavailable[weaponName] then return nil end
+	local template = importedWeaponTemplates[weaponName]
+	if not template then
+		local ok, container = pcall(function()
+			return InsertService:LoadAsset(assetId)
+		end)
+		if not ok or not container then
+			importedWeaponUnavailable[weaponName] = true
+			warn(string.format("PRISMORA_WEAPON_ASSET_FAILED name=%s asset=%d error=%s", weaponName, assetId, tostring(container)))
+			return nil
+		end
+		for _, item in container:GetDescendants() do
+			if item:IsA("LuaSourceContainer") then item:Destroy() end
+		end
+		container.Name = weaponName .. "MeshTemplate"
+		container.Parent = ServerStorage
+		importedWeaponTemplates[weaponName] = container
+		template = container
+		print(string.format("PRISMORA_WEAPON_ASSET_READY name=%s asset=%d", weaponName, assetId))
+	end
+	return template:Clone()
+end
+
+local function attachImportedWeapon(character, hand, weaponName)
+	local weapon = importedWeaponClone(weaponName)
+	if not weapon then return nil end
+	local primary = weapon:FindFirstChild("WeaponGripMarker", true)
+	if not primary or not primary:IsA("BasePart") then
+		primary = weapon:FindFirstChild("RaggialamaV2_Body", true)
+	end
+	if not primary or not primary:IsA("BasePart") then
+		primary = weapon:FindFirstChildWhichIsA("BasePart", true)
+	end
+	if not primary then
+		weapon:Destroy()
+		return nil
+	end
+
+	weapon.Name = "PrismoraWeapon"
+	weapon:SetAttribute("WeaponName", weaponName)
+	weapon.Parent = character
+	weapon.PrimaryPart = primary
+	local _, initialSize = weapon:GetBoundingBox()
+	local longest = math.max(initialSize.X, initialSize.Y, initialSize.Z)
+	if longest > 0.01 then
+		local desiredLength = WEAPON_DISPLAY_LENGTH[weaponName] or 4.5
+		weapon:ScaleTo(weapon:GetScale() * (desiredLength / longest))
+	end
+
+	for _, item in weapon:GetDescendants() do
+		if item:IsA("BasePart") then
+			item.Anchored = false
+			item.CanCollide = false
+			item.CanTouch = false
+			item.CanQuery = false
+			item.Massless = true
+			if item.Name == "WeaponGripMarker" then
+				item.Transparency = 1
+			end
+			if item ~= primary then
+				local weld = Instance.new("WeldConstraint")
+				weld.Part0 = primary
+				weld.Part1 = item
+				weld.Parent = item
+			end
+		end
+	end
+
+	local grip = Instance.new("Motor6D")
+	grip.Name = "WeaponGrip"
+	grip.Part0 = hand
+	grip.Part1 = primary
+	if primary.Name == "WeaponGripMarker" then
+		grip.C0 = WEAPON_GRIP_CFRAMES[weaponName] or CFrame.new(0, -0.20, -0.10)
+	else
+		grip.C0 = CFrame.new(0, -0.84, 0) * CFrame.Angles(0, 0, math.rad(180))
+	end
+	grip.C1 = CFrame.identity
+	grip:SetAttribute("RestC0", grip.C0)
+	grip:SetAttribute("AttackSerial", 0)
+	grip.Parent = hand
+
+	local trailSource = weapon:FindFirstChild(weaponName .. "V2_Energy", true) or primary
+	if trailSource:IsA("BasePart") then
+		local glowColors = WEAPON_GLOW_COLORS[weaponName] or { Color3.fromRGB(70, 224, 255), Color3.fromRGB(255, 95, 162) }
+		trailSource.Material = Enum.Material.Neon
+		trailSource.Color = glowColors[1]
+		trailSource.Transparency = 0.03
+		trailSource.CastShadow = false
+
+		local reactorLight = Instance.new("PointLight")
+		reactorLight.Name = "WeaponReactorLight"
+		reactorLight.Color = glowColors[1]
+		reactorLight.Brightness = 2.4
+		reactorLight.Range = weaponName == "Scintilla" and 9 or 12
+		reactorLight.Shadows = false
+		reactorLight.Parent = trailSource
+		TweenService:Create(reactorLight, TweenInfo.new(0.85, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+			Brightness = 4.2,
+			Color = glowColors[2],
+		}):Play()
+		TweenService:Create(trailSource, TweenInfo.new(1.05, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+			Transparency = 0.15,
+		}):Play()
+
+		local aura = Instance.new("Highlight")
+		aura.Name = "WeaponEnergyAura"
+		aura.Adornee = trailSource
+		aura.DepthMode = Enum.HighlightDepthMode.Occluded
+		aura.FillColor = glowColors[1]
+		aura.FillTransparency = 0.48
+		aura.OutlineColor = glowColors[2]
+		aura.OutlineTransparency = 0.03
+		aura.Parent = weapon
+
+		local silhouetteAura = Instance.new("Highlight")
+		silhouetteAura.Name = "WeaponSilhouetteAura"
+		silhouetteAura.Adornee = weapon
+		silhouetteAura.DepthMode = Enum.HighlightDepthMode.Occluded
+		silhouetteAura.FillColor = glowColors[1]
+		silhouetteAura.FillTransparency = 0.90
+		silhouetteAura.OutlineColor = glowColors[2]
+		silhouetteAura.OutlineTransparency = 0.06
+		silhouetteAura.Parent = weapon
+
+		local glowShell = trailSource:Clone()
+		glowShell.Name = "WeaponEnergyGlowShell"
+		for _, child in glowShell:GetDescendants() do
+			if child:IsA("SurfaceAppearance") or child:IsA("Light") or child:IsA("ParticleEmitter") then
+				child:Destroy()
+			end
+		end
+		glowShell.Size = trailSource.Size * 1.045
+		glowShell.CFrame = trailSource.CFrame
+		glowShell.Material = Enum.Material.Neon
+		glowShell.Color = glowColors[2]
+		glowShell.Transparency = 0.46
+		glowShell.CastShadow = false
+		glowShell.CanCollide = false
+		glowShell.CanTouch = false
+		glowShell.CanQuery = false
+		glowShell.Massless = true
+		glowShell.Parent = weapon
+		local glowWeld = Instance.new("WeldConstraint")
+		glowWeld.Part0 = primary
+		glowWeld.Part1 = glowShell
+		glowWeld.Parent = glowShell
+
+		local sparks = Instance.new("ParticleEmitter")
+		sparks.Name = "WeaponEnergySparks"
+		sparks.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+		sparks.Color = ColorSequence.new(glowColors[1], glowColors[2])
+		sparks.LightEmission = 1
+		sparks.LightInfluence = 0
+		sparks.Rate = weaponName == "Scintilla" and 12 or 8
+		sparks.Lifetime = NumberRange.new(0.22, 0.48)
+		sparks.Speed = NumberRange.new(0.15, 0.75)
+		sparks.Drag = 1.8
+		sparks.SpreadAngle = Vector2.new(180, 180)
+		sparks.Rotation = NumberRange.new(0, 360)
+		sparks.RotSpeed = NumberRange.new(-140, 140)
+		sparks.Size = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.13),
+			NumberSequenceKeypoint.new(0.35, 0.08),
+			NumberSequenceKeypoint.new(1, 0),
+		})
+		sparks.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.05),
+			NumberSequenceKeypoint.new(0.72, 0.25),
+			NumberSequenceKeypoint.new(1, 1),
+		})
+		sparks.Parent = trailSource
+
+		local trailAxis = "Y"
+		local trailLength = trailSource.Size.Y
+		if trailSource.Size.X > trailLength then
+			trailAxis = "X"
+			trailLength = trailSource.Size.X
+		end
+		if trailSource.Size.Z > trailLength then
+			trailAxis = "Z"
+			trailLength = trailSource.Size.Z
+		end
+		local function trailPoint(amount)
+			if trailAxis == "X" then return Vector3.new(amount, 0, 0) end
+			if trailAxis == "Z" then return Vector3.new(0, 0, amount) end
+			return Vector3.new(0, amount, 0)
+		end
+		local topAttachment = Instance.new("Attachment")
+		topAttachment.Position = trailPoint(-trailLength * 0.46)
+		topAttachment.Parent = trailSource
+		local bottomAttachment = Instance.new("Attachment")
+		bottomAttachment.Position = trailPoint(trailLength * 0.46)
+		bottomAttachment.Parent = trailSource
+		local trail = Instance.new("Trail")
+		trail.Name = "AttackTrail"
+		trail.Attachment0 = topAttachment
+		trail.Attachment1 = bottomAttachment
+		trail.Color = ColorSequence.new(glowColors[1], glowColors[2])
+		trail.Lifetime = 0.28
+		trail.LightEmission = 1
+		trail.LightInfluence = 0
+		trail.Enabled = false
+		trail.Parent = trailSource
+	end
+	return weapon
+end
+
+local function attachWeapon(character, weaponName)
+	local previousGrip = character:FindFirstChild("WeaponGrip", true)
+	if previousGrip then
+		previousGrip:Destroy()
+	end
+	local previous = character:FindFirstChild("PrismoraWeapon")
+	if previous then
+		previous:Destroy()
+	end
+
+	local hand = character:FindFirstChild("RightHand") or character:FindFirstChild("Right Arm")
+	if not hand or not hand:IsA("BasePart") then
+		return false
+	end
+	local importedWeapon = attachImportedWeapon(character, hand, weaponName)
+	if not importedWeapon then
+		warn(string.format("PRISMORA_WEAPON_MISSING name=%s; no legacy fallback is allowed", weaponName))
+		return false
+	end
+	poseWeaponArm(character, weaponName)
+	return true
+end
+
+-- Preload the Blender arsenal without delaying character spawn. Cycling weapons
+-- is then immediate on PC and mobile. The discarded block-built weapons are not
+-- retained as fallbacks: only the approved Blender meshes can appear in-game.
+task.spawn(function()
+	for _, weaponName in WEAPON_ORDER do
+		local probe = importedWeaponClone(weaponName)
+		if probe then probe:Destroy() end
+		task.wait()
+	end
+end)
+
+local function awardDefeat(player, enemy)
+	local defeats = getStat(player, "Sconfitte")
+	local fragments = getStat(player, "Frammenti")
+	local crystals = getStat(player, "Cristalli")
+	local reward = ENEMY_DATA[enemy:GetAttribute("Kind")].reward
+	if defeats then defeats.Value += 1 end
+	if fragments then fragments.Value += reward end
+	if crystals then crystals.Value += enemy:GetAttribute("Kind") == "Monolite" and 3 or 1 end
+	remote:FireClient(player, "Reward", reward, enemy:GetAttribute("Kind"))
+end
+
+local function defeatEnemy(enemy, player)
+	if enemy:GetAttribute("Dead") then return end
+	enemy:SetAttribute("Dead", true)
+	awardDefeat(player, enemy)
+	local spawnPosition = enemy:GetAttribute("SpawnPosition")
+	local kind = enemy:GetAttribute("Kind")
+	if registerDefeat then registerDefeat(kind) end
+
+	for _, part in enemy:GetDescendants() do
+		if part:IsA("BasePart") then
+			part.CanQuery = false
+			TweenService:Create(part, TweenInfo.new(0.32, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+				Size = part.Size * 0.12,
+				Transparency = 1,
+			}):Play()
+		end
+	end
+	task.delay(0.4, function()
+		if enemy.Parent then enemy:Destroy() end
+	end)
+end
+
+local function damageEnemy(enemy, player, amount)
+	if enemy:GetAttribute("Dead") then return false end
+	local enemyData = ENEMY_DATA[enemy:GetAttribute("Kind")]
+	if enemyData and enemyData.armored and enemy.PrimaryPart then
+		local playerRoot = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+		if playerRoot then
+			local toPlayer = playerRoot.Position - enemy.PrimaryPart.Position
+			if toPlayer.Magnitude > 0 and enemy.PrimaryPart.CFrame.LookVector:Dot(toPlayer.Unit) > 0.2 then
+				amount = math.max(3, math.floor(amount * 0.2))
+				remote:FireClient(player, "ArmorBlocked")
+			end
+		end
+	end
+	local health = math.max(0, (enemy:GetAttribute("Health") or 0) - amount)
+	enemy:SetAttribute("Health", health)
+	updateHealthDisplay(enemy)
+
+	local root = enemy.PrimaryPart
+	if root then
+		local original = root.Color
+		root.Color = Color3.fromRGB(255, 230, 170)
+		local playerRoot = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+		if playerRoot and enemy:GetAttribute("Kind") ~= "Monolite" then
+			local knockback = Vector3.new(root.Position.X - playerRoot.Position.X, 0, root.Position.Z - playerRoot.Position.Z)
+			if knockback.Magnitude > 0.1 then
+				enemy:PivotTo(enemy:GetPivot() + (knockback.Unit * (amount >= 35 and 3.2 or 1.35)))
+			end
+		end
+		remote:FireClient(player, "HitImpact", amount, root.Position)
+		task.delay(0.08, function()
+			if root.Parent then root.Color = original end
+		end)
+	end
+
+	if health <= 0 then
+		defeatEnemy(enemy, player)
+	end
+	return true
+end
+
+local function targetsInBox(character, boxSize, forwardOffset)
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if not root then return {} end
+	local params = OverlapParams.new()
+	params.FilterType = Enum.RaycastFilterType.Include
+	params.FilterDescendantsInstances = { enemies }
+	local parts = workspace:GetPartBoundsInBox(root.CFrame * CFrame.new(0, 0, -forwardOffset), boxSize, params)
+	local found = {}
+	local result = {}
+	for _, part in parts do
+		local enemy = part:FindFirstAncestorOfClass("Model")
+		if enemy and enemy.Parent == enemies and not found[enemy] then
+			found[enemy] = true
+			table.insert(result, enemy)
+		end
+	end
+	return result
+end
+
+local function flashWeapon(character, duration)
+	local weapon = character:FindFirstChild("PrismoraWeapon")
+	local trail = weapon and weapon:FindFirstChild("AttackTrail", true)
+	local grip = character:FindFirstChild("WeaponGrip", true)
+	if trail then
+		trail.Enabled = true
+		task.delay(duration, function()
+			if trail.Parent then trail.Enabled = false end
+		end)
+	end
+	if grip and grip:IsA("Motor6D") and weapon then
+		local weaponName = weapon:GetAttribute("WeaponName")
+		local restC0 = grip:GetAttribute("RestC0")
+		if typeof(restC0) ~= "CFrame" then
+			restC0 = grip.C0
+			grip:SetAttribute("RestC0", restC0)
+		end
+		local attackSerial = (grip:GetAttribute("AttackSerial") or 0) + 1
+		grip:SetAttribute("AttackSerial", attackSerial)
+		local strike = weaponName == "Pulsar"
+			and CFrame.new(0, 0, 0.32)
+			or CFrame.Angles(math.rad(weaponName == "Frantuma" and -105 or -72), 0, math.rad(-32))
+		TweenService:Create(grip, TweenInfo.new(0.07, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+			C0 = restC0 * strike,
+		}):Play()
+		task.delay(0.075, function()
+			if grip.Parent and grip:GetAttribute("AttackSerial") == attackSerial then
+				TweenService:Create(grip, TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+					C0 = restC0,
+				}):Play()
+			end
+		end)
+	end
+end
+
+local function showAttackArc(character, weaponName, combo)
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if not root then return end
+
+	local colors = WEAPON_GLOW_COLORS[weaponName] or {
+		Color3.fromRGB(70, 224, 255),
+		Color3.fromRGB(255, 95, 162),
+	}
+	local radius = weaponName == "Frantuma" and 8.2 or (weaponName == "Pulsar" and 6.2 or 7.1)
+	local segmentCount = 9
+	for index = 1, segmentCount do
+		local alpha = (index - 1) / (segmentCount - 1)
+		local angle = math.rad(-68 + (136 * alpha))
+		local forward = root.CFrame.LookVector
+		local right = root.CFrame.RightVector
+		local position = root.Position
+			+ (forward * (3.6 + math.cos(angle) * radius))
+			+ (right * (math.sin(angle) * radius))
+			+ Vector3.new(0, 1.6 + math.sin(alpha * math.pi) * 1.2, 0)
+
+		local slash = Instance.new("Part")
+		slash.Name = "PrismoraAttackArc"
+		slash.Anchored = true
+		slash.CanCollide = false
+		slash.CanTouch = false
+		slash.CanQuery = false
+		slash.Material = Enum.Material.Neon
+		slash.Color = colors[((index + combo) % 2) + 1]
+		slash.Transparency = 0.08
+		slash.Size = Vector3.new(combo == 3 and 0.34 or 0.22, 0.32, radius * 0.52)
+		slash.CFrame = CFrame.lookAt(position, position + forward)
+			* CFrame.Angles(0, angle, math.rad(20 - (40 * alpha)))
+		slash.Parent = workspace
+
+		TweenService:Create(slash, TweenInfo.new(0.18, Enum.EasingStyle.Quint), {
+			Transparency = 1,
+			Size = slash.Size * 1.35,
+		}):Play()
+		task.delay(0.2, function()
+			if slash.Parent then slash:Destroy() end
+		end)
+	end
+end
+
+local function addHeroCharge(player, amount)
+	local state = playerState[player]
+	if not state or state.heroActive then return end
+	local multiplier = activeModifier == "TEMPESTA SOLARE" and 1.45 or 1
+	state.heroCharge = math.clamp(state.heroCharge + (amount * multiplier), 0, 100)
+	remote:FireClient(player, "HeroCharge", state.heroCharge)
+	if state.heroCharge >= 100 then
+		remote:FireClient(player, "HeroReady")
+	end
+end
+
+local function createSolaris(player)
+	local state = playerState[player]
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not state or not root or state.heroActive or state.heroCharge < 100 then return end
+	state.heroCharge = 0
+	state.heroActive = true
+	remote:FireClient(player, "HeroCharge", 0)
+
+	local hero = Instance.new("Model")
+	hero.Name = "SolarisHero"
+	hero.Parent = workspace
+	local heroPosition = root.Position + (root.CFrame.LookVector * 14) + Vector3.new(0, 9, 0)
+
+	local body = makePart(hero, "SolarisCore", Vector3.new(8, 14, 5), Color3.fromRGB(255, 201, 74), Enum.Material.Neon)
+	body.CanQuery = false
+	body.CFrame = CFrame.lookAt(heroPosition, heroPosition + root.CFrame.LookVector)
+	hero.PrimaryPart = body
+	local head = makePart(hero, "SolarisCrown", Vector3.new(7, 7, 7), Color3.fromRGB(255, 240, 184), Enum.Material.Neon, Enum.PartType.Ball)
+	head.CanQuery = false
+	head.CFrame = body.CFrame * CFrame.new(0, 9, 0)
+	for side = -1, 1, 2 do
+		local arm = makePart(hero, side < 0 and "LeftSolarArm" or "RightSolarArm", Vector3.new(3.2, 12, 3.2), Color3.fromRGB(255, 95, 162), Enum.Material.Neon)
+		arm.CanQuery = false
+		arm.CFrame = body.CFrame * CFrame.new(side * 6, 0, 0) * CFrame.Angles(0, 0, math.rad(side * -18))
+	end
+
+	local heroLight = Instance.new("PointLight")
+	heroLight.Color = Color3.fromRGB(255, 201, 74)
+	heroLight.Brightness = 2.5
+	heroLight.Range = 34
+	heroLight.Shadows = false
+	heroLight.Parent = body
+
+	local nameGui = Instance.new("BillboardGui")
+	nameGui.Size = UDim2.fromOffset(280, 52)
+	nameGui.StudsOffset = Vector3.new(0, 15, 0)
+	nameGui.AlwaysOnTop = true
+	nameGui.MaxDistance = 180
+	nameGui.Parent = body
+	local nameLabel = Instance.new("TextLabel")
+	nameLabel.Size = UDim2.fromScale(1, 1)
+	nameLabel.BackgroundTransparency = 1
+	nameLabel.Font = Enum.Font.GothamBlack
+	nameLabel.Text = "SOLARIS • " .. string.upper(player.DisplayName)
+	nameLabel.TextColor3 = Color3.fromRGB(255, 240, 184)
+	nameLabel.TextScaled = true
+	nameLabel.Parent = nameGui
+
+	local aura = Instance.new("Highlight")
+	aura.FillColor = Color3.fromRGB(255, 201, 74)
+	aura.FillTransparency = 0.45
+	aura.OutlineColor = Color3.fromRGB(255, 95, 162)
+	aura.OutlineTransparency = 0.02
+	aura.Parent = character
+
+	remote:FireAllClients("HeroSummoned", player.DisplayName)
+
+	task.spawn(function()
+		for pulseIndex = 1, 5 do
+			if not hero.Parent then break end
+			local ring = Instance.new("Part")
+			ring.Name = "SolarisShockwave"
+			ring.Anchored = true
+			ring.CanCollide = false
+			ring.CanTouch = false
+			ring.CanQuery = false
+			ring.Shape = Enum.PartType.Cylinder
+			ring.Material = Enum.Material.Neon
+			ring.Color = pulseIndex % 2 == 0 and Color3.fromRGB(255, 95, 162) or Color3.fromRGB(255, 201, 74)
+			ring.Transparency = 0.18
+			ring.Size = Vector3.new(0.35, 4, 4)
+			ring.CFrame = CFrame.new(hero.PrimaryPart.Position - Vector3.new(0, 6, 0)) * CFrame.Angles(0, 0, math.rad(90))
+			ring.Parent = workspace
+			TweenService:Create(ring, TweenInfo.new(0.55, Enum.EasingStyle.Quint), {
+				Size = Vector3.new(0.35, 72, 72),
+				Transparency = 1,
+			}):Play()
+			task.delay(0.6, function() if ring.Parent then ring:Destroy() end end)
+
+			for _, enemy in enemies:GetChildren() do
+				if enemy:IsA("Model") and enemy.PrimaryPart and not enemy:GetAttribute("Dead") then
+					if (enemy.PrimaryPart.Position - hero.PrimaryPart.Position).Magnitude <= 40 then
+						damageEnemy(enemy, player, pulseIndex == 1 and 95 or 62)
+					end
+				end
+			end
+			task.wait(1.35)
+		end
+	end)
+
+	task.delay(8, function()
+		if hero.Parent then hero:Destroy() end
+		if aura.Parent then aura:Destroy() end
+		if playerState[player] then playerState[player].heroActive = false end
+	end)
+end
+
+remote.OnServerEvent:Connect(function(player, action, requestedSlot)
+	local state = playerState[player]
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not state or not character or not humanoid or humanoid.Health <= 0 or not root then return end
+
+	local now = os.clock()
+	if action == "Attack" and now >= state.attack then
+		local weaponName = WEAPON_ORDER[state.weaponIndex or 1]
+		local weaponData = WEAPON_DATA[weaponName]
+		if not state.attackLogged then
+			state.attackLogged = true
+			print(string.format("PRISMORA_ATTACK_RECEIVED player=%s weapon=%s", player.Name, weaponName))
+		end
+		state.attack = now + weaponData.cooldown
+		state.combo = (state.combo % 3) + 1
+		local damage = state.combo == 3 and weaponData.finisher or weaponData.damage
+		local hitCount = 0
+		for _, enemy in targetsInBox(character, weaponData.box, weaponData.offset) do
+			if damageEnemy(enemy, player, damage) then
+				hitCount += 1
+				addHeroCharge(player, state.combo == 3 and 25 or 18)
+			end
+		end
+		flashWeapon(character, 0.24)
+		showAttackArc(character, weaponName, state.combo)
+		remote:FireClient(player, "AttackFeedback", state.combo, hitCount, weaponName)
+	elseif action == "Skill" and now >= state.skill then
+		state.skill = now + 7
+		local hitCount = 0
+		for _, enemy in targetsInBox(character, Vector3.new(16, 12, 28), 13) do
+			if damageEnemy(enemy, player, 72) then
+				hitCount += 1
+				addHeroCharge(player, 30)
+			end
+		end
+		root.AssemblyLinearVelocity = (root.CFrame.LookVector * 48) + Vector3.new(0, math.max(5, root.AssemblyLinearVelocity.Y), 0)
+		flashWeapon(character, 0.55)
+		remote:FireClient(player, "SkillFeedback", hitCount, 7)
+	elseif action == "Dash" and now >= state.dash then
+		state.dash = now + 1.2
+		root.AssemblyLinearVelocity = (root.CFrame.LookVector * 78) + Vector3.new(0, root.AssemblyLinearVelocity.Y, 0)
+		remote:FireClient(player, "DashFeedback", 1.2)
+	elseif action == "SummonHero" then
+		createSolaris(player)
+	elseif (action == "CycleWeapon" or action == "SelectWeapon") and now >= (state.cycle or 0) then
+		if not player:GetAttribute("PrismoraSecondWeaponUnlocked") then return end
+		state.cycle = now + 0.35
+		if action == "SelectWeapon" then
+			state.weaponIndex = requestedSlot == 2 and 3 or 1
+		else
+			state.weaponIndex = (state.weaponIndex or 1) == 1 and 3 or 1
+		end
+		local weaponName = WEAPON_ORDER[state.weaponIndex]
+		attachWeapon(character, weaponName)
+		remote:FireClient(player, "WeaponChanged", weaponName, state.weaponIndex == 1 and 1 or 2, WEAPON_DATA[weaponName].cooldown)
+	end
+end)
+
+local function nearestPlayer(position, maxDistance)
+	local bestPlayer, bestRoot, bestDistance
+	for _, player in Players:GetPlayers() do
+		local character = player.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		local state = playerState[player]
+		if humanoid and humanoid.Health > 0 and root and (not state or os.clock() >= (state.protectedUntil or 0)) then
+			local distance = (root.Position - position).Magnitude
+			if distance <= maxDistance and (not bestDistance or distance < bestDistance) then
+				bestPlayer, bestRoot, bestDistance = player, root, distance
+			end
+		end
+	end
+	return bestPlayer, bestRoot, bestDistance
+end
+
+local function balancedTarget(enemy, maxDistance)
+	local loads = {}
+	for _, other in enemies:GetChildren() do
+		local userId = other:GetAttribute("TargetUserId")
+		if userId and userId ~= 0 and not other:GetAttribute("Dead") then
+			loads[userId] = (loads[userId] or 0) + 1
+		end
+	end
+
+	local bestPlayer, bestRoot, bestScore
+	for _, candidate in Players:GetPlayers() do
+		local character = candidate.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		if humanoid and humanoid.Health > 0 and root then
+			local distance = (root.Position - enemy.PrimaryPart.Position).Magnitude
+			if distance <= maxDistance then
+				local score = distance + ((loads[candidate.UserId] or 0) * 14)
+				if not bestScore or score < bestScore then
+					bestPlayer, bestRoot, bestScore = candidate, root, score
+				end
+			end
+		end
+	end
+	return bestPlayer, bestRoot
+end
+
+local function separationVector(enemy, position)
+	local steering = Vector3.zero
+	for _, other in enemies:GetChildren() do
+		if other ~= enemy and other:IsA("Model") and other.PrimaryPart and not other:GetAttribute("Dead") then
+			local offset = Vector3.new(position.X - other.PrimaryPart.Position.X, 0, position.Z - other.PrimaryPart.Position.Z)
+			local distance = offset.Magnitude
+			if distance > 0.05 and distance < 11 then
+				steering += offset.Unit * ((11 - distance) / 11)
+			elseif distance <= 0.05 then
+				local sign = enemy:GetAttribute("OrbitSign") or 1
+				steering += Vector3.new(sign, 0, -sign)
+			end
+		end
+	end
+	return steering
+end
+
+local function clampToCombatFloor(position)
+	return Vector3.new(
+		math.clamp(position.X, combatCenter.X - combatHalfSizeX, combatCenter.X + combatHalfSizeX),
+		position.Y,
+		math.clamp(position.Z, combatCenter.Z - combatHalfSizeZ, combatCenter.Z + combatHalfSizeZ)
+	)
+end
+
+local groundRayParams = RaycastParams.new()
+groundRayParams.FilterType = Enum.RaycastFilterType.Exclude
+groundRayParams.FilterDescendantsInstances = { enemies }
+groundRayParams.IgnoreWater = false
+
+local function groundedPursuitPosition(enemy, candidate)
+	-- Combat used to clamp every enemy to the original 96x96 arena. Once the
+	-- capital grew, a player standing just beyond its gate became unreachable.
+	-- Probe the actual world instead so enemies can leave the arena, cross gates
+	-- and follow bridge decks while never stepping onto empty sky.
+	local current = enemy.PrimaryPart.Position
+	local origin = Vector3.new(candidate.X, current.Y + 8, candidate.Z)
+	local result = workspace:Raycast(origin, Vector3.new(0, -32, 0), groundRayParams)
+	if not result or result.Normal.Y < 0.42 then
+		return current, false
+	end
+
+	local halfHeight = enemy.PrimaryPart.Size.Y * 0.5
+	local groundY = result.Position.Y + halfHeight + 0.12
+	-- Reject roofs or distant lower islands accidentally caught by the ray.
+	if math.abs(groundY - current.Y) > 7.5 then
+		return current, false
+	end
+	enemy:SetAttribute("GroundY", groundY)
+	return Vector3.new(candidate.X, groundY, candidate.Z), true
+end
+
+local function activeAttackers(userId, now)
+	local count = 0
+	for _, other in enemies:GetChildren() do
+		if other:GetAttribute("TargetUserId") == userId and (other:GetAttribute("AttackTokenUntil") or 0) > now then
+			count += 1
+		end
+	end
+	return count
+end
+
+local function bossShockwave(enemy)
+	if not enemy.PrimaryPart or enemy:GetAttribute("Dead") then return end
+	local origin = enemy.PrimaryPart.Position - Vector3.new(0, 6.2, 0)
+	local warning = Instance.new("Part")
+	warning.Name = "BossWarning"
+	warning.Anchored = true
+	warning.CanCollide = false
+	warning.CanTouch = false
+	warning.CanQuery = false
+	warning.Shape = Enum.PartType.Cylinder
+	warning.Material = Enum.Material.Neon
+	warning.Color = Color3.fromRGB(255, 122, 47)
+	warning.Transparency = 0.5
+	warning.Size = Vector3.new(0.22, 40, 40)
+	warning.CFrame = CFrame.new(origin) * CFrame.Angles(0, 0, math.rad(90))
+	warning.Parent = workspace
+	remote:FireAllClients("BossTelegraph")
+	TweenService:Create(warning, TweenInfo.new(0.8), { Transparency = 0.16 }):Play()
+
+	task.delay(0.85, function()
+		if warning.Parent then
+			warning.Color = Color3.fromRGB(255, 95, 162)
+			TweenService:Create(warning, TweenInfo.new(0.34), {
+				Size = Vector3.new(0.22, 58, 58),
+				Transparency = 1,
+			}):Play()
+		end
+		for _, player in Players:GetPlayers() do
+			local character = player.Character
+			local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+			local root = character and character:FindFirstChild("HumanoidRootPart")
+			if humanoid and root and (root.Position - origin).Magnitude <= 24 then
+				local state = playerState[player]
+				local now = os.clock()
+				if not state or now >= (state.nextDamage or 0) then
+					if state then
+						state.nextDamage = now + 0.65
+						state.lastDamage = now
+					end
+					humanoid:TakeDamage(18)
+					remote:FireClient(player, "DamageReceived", 18, "Monolite")
+				end
+			end
+		end
+		task.delay(0.4, function() if warning.Parent then warning:Destroy() end end)
+	end)
+end
+
+local function enemyMotionCFrame(enemy, position, direction, now, moving)
+	local kind = enemy:GetAttribute("Kind")
+	local speed = enemy:GetAttribute("MoveSpeed") or 7
+	local phase = (now * speed * 0.92) + (enemy:GetAttribute("MotionSeed") or 0)
+	local bobScale = kind == "Monolite" and 0.10 or kind == "Rapido" and 0.28 or 0.15
+	local bob = math.sin(phase * 2) * bobScale * (moving and 1 or 0.32)
+	local groundY = enemy:GetAttribute("GroundY") or position.Y
+	local animatedPosition = Vector3.new(position.X, groundY + bob, position.Z)
+	local flatDirection = Vector3.new(direction.X, 0, direction.Z)
+	if flatDirection.Magnitude < 0.01 then flatDirection = Vector3.new(0, 0, -1) end
+	local rollScale = 5
+	if kind == "Gonfio" or kind == "Monolite" then
+		rollScale = 2.2
+	elseif kind == "Rapido" then
+		rollScale = 8
+	end
+	local pitch = kind == "Rapido" and math.rad(-7 + math.sin(phase) * 4) or math.rad(math.sin(phase) * 2.4)
+	local roll = math.rad(math.sin(phase) * rollScale) * (moving and 1 or 0.25)
+	return CFrame.lookAt(animatedPosition, animatedPosition + flatDirection.Unit) * CFrame.Angles(pitch, 0, roll)
+end
+
+local aiAccumulator = 0
+RunService.Heartbeat:Connect(function(deltaTime)
+	aiAccumulator += deltaTime
+	-- 30 Hz is fluid in third person and still leaves enough headroom on phones.
+	-- The previous 12.5 Hz cadence made detailed enemies visibly teleport.
+	if aiAccumulator < (1 / 30) then return end
+	local step = aiAccumulator
+	aiAccumulator = 0
+
+	for _, enemy in enemies:GetChildren() do
+		if enemy:IsA("Model") and enemy.PrimaryPart and not enemy:GetAttribute("Dead") then
+			local data = ENEMY_DATA[enemy:GetAttribute("Kind")]
+			local position = enemy.PrimaryPart.Position
+			local now = os.clock()
+			local player, targetRoot
+			local currentUserId = enemy:GetAttribute("TargetUserId") or 0
+			if currentUserId ~= 0 and now < (enemy:GetAttribute("NextTargetUpdate") or 0) then
+				player = Players:GetPlayerByUserId(currentUserId)
+				targetRoot = player and player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+			end
+			if not player or not targetRoot then
+				-- Any living player in this compact realm is a valid target. A short
+				-- radius made enemies freeze at their spawn when the capital layout grew.
+				player, targetRoot = balancedTarget(enemy, enemy:GetAttribute("Kind") == "Monolite" and 300 or 1000)
+				enemy:SetAttribute("TargetUserId", player and player.UserId or 0)
+				enemy:SetAttribute("NextTargetUpdate", now + 2.5)
+			end
+			if player and targetRoot then
+				local flatTarget = Vector3.new(targetRoot.Position.X, position.Y, targetRoot.Position.Z)
+				local delta = flatTarget - position
+				local distance = delta.Magnitude
+				local separation = separationVector(enemy, position)
+				if distance > data.range + 0.8 and distance > 0.1 then
+					local desired = delta.Unit + (separation * 1.35)
+					if desired.Magnitude > 0.1 then
+						local candidate = position + (desired.Unit * (enemy:GetAttribute("MoveSpeed") or data.speed) * step)
+						local newPosition, canAdvance = groundedPursuitPosition(enemy, candidate)
+						if canAdvance then
+							enemy:PivotTo(enemyMotionCFrame(enemy, newPosition, desired.Unit, now, true))
+						else
+							enemy:PivotTo(enemyMotionCFrame(enemy, position, desired.Unit, now, false))
+						end
+					end
+				elseif now >= (enemy:GetAttribute("NextAttack") or 0) then
+					local maxAttackers = math.clamp(math.ceil(#Players:GetPlayers() * 0.75), 1, 4)
+					if enemy:GetAttribute("Kind") == "Monolite" or activeAttackers(player.UserId, now) < maxAttackers then
+						enemy:SetAttribute("AttackTokenUntil", now + 0.9)
+						enemy:SetAttribute("NextAttack", now + (enemy:GetAttribute("Kind") == "Monolite" and 2.8 or 1.7))
+						if enemy:GetAttribute("Kind") == "Monolite" then
+						bossShockwave(enemy)
+						else
+						local humanoid = targetRoot.Parent and targetRoot.Parent:FindFirstChildOfClass("Humanoid")
+							if humanoid then
+								local state = playerState[player]
+								if (not state or now >= (state.protectedUntil or 0)) and (not state or now >= (state.nextDamage or 0)) then
+									if state then
+										state.nextDamage = now + 0.65
+										state.lastDamage = now
+									end
+									humanoid:TakeDamage(data.damage)
+									remote:FireClient(player, "DamageReceived", data.damage, enemy:GetAttribute("Kind"))
+								end
+							end
+						end
+					else
+						local tangent = Vector3.new(-delta.Z, 0, delta.X)
+					if tangent.Magnitude > 0.1 then
+						local orbitSign = enemy:GetAttribute("OrbitSign") or 1
+						local desired = (tangent.Unit * orbitSign) + (separation * 1.7)
+						local candidate = position + (desired.Unit * (enemy:GetAttribute("MoveSpeed") or data.speed) * 0.55 * step)
+						local newPosition, canAdvance = groundedPursuitPosition(enemy, candidate)
+						if canAdvance then
+							enemy:PivotTo(enemyMotionCFrame(enemy, newPosition, flatTarget - newPosition, now, true))
+						end
+					end
+					end
+				else
+					enemy:PivotTo(enemyMotionCFrame(enemy, position, flatTarget - position, now, false))
+				end
+			else
+				-- Never display a lifeless row of enemies while a character is loading.
+				-- They patrol the arena and immediately switch to pursuit on acquisition.
+				local seed = enemy:GetAttribute("MotionSeed") or 0
+				local patrolRadius = enemy:GetAttribute("Kind") == "Monolite" and 18 or 26
+				local patrolTarget = combatCenter + Vector3.new(
+					math.cos((now * 0.34) + seed) * patrolRadius,
+					0,
+					math.sin((now * 0.34) + seed) * patrolRadius
+				)
+				local patrolDelta = Vector3.new(patrolTarget.X - position.X, 0, patrolTarget.Z - position.Z)
+				if patrolDelta.Magnitude > 1 then
+					local newPosition = clampToCombatFloor(position + patrolDelta.Unit * (enemy:GetAttribute("MoveSpeed") or data.speed) * 0.45 * step)
+					enemy:PivotTo(enemyMotionCFrame(enemy, newPosition, patrolDelta.Unit, now, true))
+				end
+			end
+		end
+	end
+end)
+
+local function cleanCombatSilhouette(player, character)
+	local blockedAttachments = { "Hand", "Grip", "Back", "Waist", "Shoulder", "Torso" }
+	for _, child in character:GetChildren() do
+		if child:IsA("Tool") then
+			child:Destroy()
+		elseif child:IsA("Accessory") then
+			local remove = false
+			for _, descendant in child:GetDescendants() do
+				if descendant:IsA("Attachment") then
+					for _, fragment in blockedAttachments do
+						if string.find(descendant.Name, fragment, 1, true) then
+							remove = true
+							break
+						end
+					end
+				end
+				if remove then break end
+			end
+			if remove then child:Destroy() end
+		end
+	end
+	local backpack = player:FindFirstChildOfClass("Backpack")
+	if backpack then
+		for _, item in backpack:GetChildren() do
+			if item:IsA("Tool") then item:Destroy() end
+		end
+	end
+end
+
+local function setupPlayer(player)
+	player:SetAttribute("PrismoraSecondWeaponUnlocked", false)
+	playerState[player] = { attack = 0, skill = 0, dash = 0, cycle = 0, combo = 0, heroCharge = 0, heroActive = false, weaponIndex = 1, protectedUntil = os.clock() + 4, nextDamage = 0, lastDamage = 0 }
+	local function configureCharacter(character)
+		if playerState[player] then playerState[player].protectedUntil = os.clock() + 4 end
+		cleanCombatSilhouette(player, character)
+		local humanoid = character:WaitForChild("Humanoid")
+		humanoid.BreakJointsOnDeath = false
+		humanoid.MaxHealth = 140
+		humanoid.Health = humanoid.MaxHealth
+		humanoid.WalkSpeed = 20
+		humanoid.JumpHeight = 9
+		humanoid.Died:Connect(function()
+			remote:FireClient(player, "PlayerDown")
+		end)
+		task.wait(0.4)
+		local weaponIndex = playerState[player] and playerState[player].weaponIndex or 1
+		local weaponName = WEAPON_ORDER[weaponIndex]
+		attachWeapon(character, weaponName)
+		remote:FireClient(player, "WeaponEquipped", weaponName, weaponIndex, WEAPON_DATA[weaponName].cooldown)
+		remote:FireClient(player, "RunPhase", currentPhaseText, activeModifier)
+		if runState.stage > 0 then
+			remote:FireClient(player, "RunProgress", runState.stage, runState.defeats, runState.expectedDefeats or 0)
+		end
+		remote:FireClient(player, "HeroCharge", playerState[player] and playerState[player].heroCharge or 0)
+	end
+	player.CharacterAdded:Connect(configureCharacter)
+	if player.Character then
+		task.spawn(configureCharacter, player.Character)
+	end
+end
+
+Players.PlayerAdded:Connect(setupPlayer)
+Players.PlayerRemoving:Connect(function(player)
+	playerState[player] = nil
+end)
+for _, player in Players:GetPlayers() do setupPlayer(player) end
+
+task.spawn(function()
+	while enemies.Parent do
+		local now = os.clock()
+		for _, player in Players:GetPlayers() do
+			local state = playerState[player]
+			local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+			if state and humanoid and humanoid.Health > 0 and humanoid.Health < humanoid.MaxHealth and now - (state.lastDamage or 0) >= 3 then
+				humanoid.Health = math.min(humanoid.MaxHealth, humanoid.Health + 6)
+			end
+		end
+		task.wait(1)
+	end
+end)
+
+local function announcePhase(text)
+	currentPhaseText = text
+	remote:FireAllClients("RunPhase", text, activeModifier)
+end
+
+local function showSpawnTelegraph(position)
+	local marker = Instance.new("Part")
+	marker.Name = "EnemySpawnTelegraph"
+	marker.Anchored = true
+	marker.CanCollide = false
+	marker.CanTouch = false
+	marker.CanQuery = false
+	marker.Shape = Enum.PartType.Cylinder
+	marker.Material = Enum.Material.Neon
+	marker.Color = Color3.fromRGB(255, 122, 47)
+	marker.Transparency = 0.58
+	marker.Size = Vector3.new(0.18, 2, 2)
+	marker.CFrame = CFrame.new(position.X, combatCenter.Y - 1.88, position.Z) * CFrame.Angles(0, 0, math.rad(90))
+	marker.Parent = workspace
+	TweenService:Create(marker, TweenInfo.new(0.7, Enum.EasingStyle.Quint), {
+		Size = Vector3.new(0.18, 6, 6),
+		Transparency = 0.16,
+	}):Play()
+	task.wait(0.72)
+	marker:Destroy()
+end
+
+local function startStage(stage)
+	runState.stage = stage
+	runState.defeats = 0
+	local entries
+	local playerCount = math.max(1, #Players:GetPlayers())
+	if stage == 1 then
+		announcePhase("ONDATA 1 • SCHIVA IL BRANCO")
+		local pool = { "Scheggino", "Rapido", "Gonfio", "Tessitore", "Scheggino", "Rapido", "Gonfio", "Tessitore", "Scheggino", "Rapido", "Gonfio", "Tessitore" }
+		entries = {}
+		for index = 1, math.min(3 + (playerCount * 2), #pool) do table.insert(entries, pool[index]) end
+	elseif stage == 2 then
+		announcePhase("ONDATA 2 • ROMPI LE CORAZZE")
+		local pool = { "Rapido", "Guscione", "Tessitore", "Gonfio", "Guscione", "Scheggino", "GuscioneElite", "Rapido", "Guscione", "Tessitore", "Gonfio", "GuscioneElite", "Rapido", "Guscione" }
+		entries = {}
+		for index = 1, math.min(4 + (playerCount * 2), #pool) do table.insert(entries, pool[index]) end
+	elseif stage == 3 then
+		announcePhase("GUARDIANO SPENTO • EVOCA SOLARIS")
+		entries = { "Monolite" }
+	end
+	if entries then
+		runState.expectedDefeats = #entries
+		remote:FireAllClients("RunProgress", stage, 0, #entries)
+		task.spawn(function()
+			for index, kind in entries do
+				local ring = stage == 3 and 38 or (22 + ((index % 2) * 8))
+				local angle = ((index - 1) / #entries) * math.pi * 2
+				local data = ENEMY_DATA[kind]
+				local rootHeight = kind == "Monolite" and 13 or data.size
+				local floorY = combatCenter.Y - 2
+				local spawnY = floorY + (rootHeight * 0.5) + 0.15
+				local position = clampToCombatFloor(Vector3.new(
+					combatCenter.X + (math.cos(angle) * ring),
+					spawnY,
+					combatCenter.Z + (math.sin(angle) * ring) - 8
+				))
+				showSpawnTelegraph(position)
+				local enemy = createEnemy(kind, position)
+				enemy:SetAttribute("OrbitSign", index % 2 == 0 and 1 or -1)
+				enemy:SetAttribute("TargetUserId", 0)
+				enemy:SetAttribute("AttackTokenUntil", 0)
+				task.wait(0.15)
+			end
+		end)
+	end
+end
+
+local function beginRun()
+	for _, enemy in enemies:GetChildren() do enemy:Destroy() end
+	runState.runNumber += 1
+	local modifiers = { "FURIA DEGLI SPENTI", "CORAZZA PRISMATICA", "TEMPESTA SOLARE" }
+	activeModifier = modifiers[((runState.runNumber - 1) % #modifiers) + 1]
+	remote:FireAllClients("RunModifier", activeModifier)
+	startStage(1)
+end
+
+local function waitForArenaPlayerThenBegin()
+	currentPhaseText = "CAPITALE • ENTRA NEL PORTALE DORATO"
+	remote:FireAllClients("RunPhase", currentPhaseText, "NESSUNO")
+	while enemies.Parent do
+		for _, player in Players:GetPlayers() do
+			local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+			if root and (root.Position - combatCenter).Magnitude <= 145 then
+				beginRun()
+				return
+			end
+		end
+		task.wait(0.35)
+	end
+end
+
+registerDefeat = function(kind)
+	runState.defeats += 1
+	remote:FireAllClients("RunProgress", runState.stage, runState.defeats, runState.expectedDefeats or 0)
+	if runState.stage == 1 and runState.defeats >= (runState.expectedDefeats or 7) then
+		task.delay(1.2, function() startStage(2) end)
+	elseif runState.stage == 2 and runState.defeats >= (runState.expectedDefeats or 8) then
+		task.delay(1.5, function() startStage(3) end)
+	elseif runState.stage == 3 and kind == "Monolite" then
+		runState.stage = 4
+		announcePhase("INCURSIONE COMPLETATA • FRAMMENTI OTTENUTI")
+		local teamReward = 3
+		for _, player in Players:GetPlayers() do
+			local fragments = getStat(player, "Frammenti")
+			if fragments then
+				fragments.Value += teamReward
+			end
+			if not player:GetAttribute("PrismoraSecondWeaponUnlocked") then
+				player:SetAttribute("PrismoraSecondWeaponUnlocked", true)
+				remote:FireClient(player, "LoadoutUnlocked", "Raggialama")
+			end
+		end
+		remote:FireAllClients("RunComplete", runState.runNumber, teamReward)
+		task.delay(8, waitForArenaPlayerThenBegin)
+	end
+end
+
+task.spawn(waitForArenaPlayerThenBegin)
+
+print("PRISMORA_ACTION_READY waves=adaptive separation=on attack_tokens=scaled solo_regen=on")
+]]></string>
+      </Properties>
+    </Item>
+    <Item class="Script" referent="3">
+      <Properties>
+        <string name="Name">CollisionAudit</string>
+        <token name="RunContext">0</token>
+        <string name="Source"><![CDATA[local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+
+if not RunService:IsStudio() then
+	return
+end
+
+repeat task.wait(0.1) until workspace:GetAttribute("PrismoraReady")
+
+local world = workspace:WaitForChild("PrismoraWorld")
+local surfaces = {}
+for _, item in world:GetDescendants() do
+	if item:IsA("BasePart") and string.find(item.Name, "PlayableSurface", 1, true) then
+		table.insert(surfaces, item)
+	end
+end
+
+local samples = 0
+local holes = 0
+local maxDeviation = 0
+for _, surface in surfaces do
+	local isVerticalCylinder = surface.Shape == Enum.PartType.Cylinder
+	local expectedY = surface.Position.Y + ((if isVerticalCylinder then surface.Size.X else surface.Size.Y) * 0.5)
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Include
+	params.FilterDescendantsInstances = { surface }
+	local sampleWidth = if isVerticalCylinder then surface.Size.Y else surface.Size.X
+	local sampleDepth = surface.Size.Z
+	for x = -sampleWidth * 0.48, sampleWidth * 0.48, 4 do
+		for z = -sampleDepth * 0.48, sampleDepth * 0.48, 4 do
+			-- A cylinder's bounding box has empty corners by design. They are not
+			-- floor holes, so only audit points inside its circular footprint.
+			if isVerticalCylinder and ((x / (sampleWidth * 0.5)) ^ 2 + (z / (sampleDepth * 0.5)) ^ 2) > 0.92 then
+				continue
+			end
+			samples += 1
+			local origin = if isVerticalCylinder
+				then Vector3.new(surface.Position.X + x, expectedY + 18, surface.Position.Z + z)
+				else surface.CFrame:PointToWorldSpace(Vector3.new(x, 18, z))
+			local result = workspace:Raycast(origin, Vector3.new(0, -40, 0), params)
+			if not result then
+				holes += 1
+			else
+				maxDeviation = math.max(maxDeviation, math.abs(result.Position.Y - expectedY))
+			end
+		end
+	end
+end
+
+local spawnPosition = workspace:GetAttribute("PrismoraSpawnPoint")
+local visibleCyan = {}
+if typeof(spawnPosition) == "Vector3" then
+	for _, item in workspace:GetPartBoundsInRadius(spawnPosition, 24) do
+		if item:IsA("BasePart") and item.Transparency < 0.9 and item.Color.B > 0.75 and item.Color.G > 0.65 and item.Color.R < 0.65 then
+			table.insert(visibleCyan, item:GetFullName())
+		end
+	end
+end
+
+local bridgeDecks = 0
+local bridgeBlockers = {}
+local perimeterBarriers = {}
+for _, item in world:GetDescendants() do
+	if item:IsA("BasePart") and string.find(item.Name, "SafetyBarrier", 1, true) and item.Name ~= "BridgeSafetyBarrier" then
+		table.insert(perimeterBarriers, item)
+	end
+end
+for _, item in world:GetDescendants() do
+	if item:IsA("BasePart") and item.Name == "CrystalBridgeDeck" then
+		bridgeDecks += 1
+		-- CanQuery is deliberately false on invisible barriers, so spatial queries
+		-- cannot audit them. Sample the playable bridge centreline directly in
+		-- every barrier's local space instead.
+		for sampleIndex = -5, 5 do
+			local corridorPoint = item.CFrame:PointToWorldSpace(Vector3.new(0, 4, (item.Size.Z * 0.45) * (sampleIndex / 5)))
+			for _, barrier in perimeterBarriers do
+				local localPoint = barrier.CFrame:PointToObjectSpace(corridorPoint)
+				local half = barrier.Size * 0.5
+				if math.abs(localPoint.X) <= half.X and math.abs(localPoint.Y) <= half.Y and math.abs(localPoint.Z) <= half.Z then
+					bridgeBlockers[barrier:GetFullName()] = true
+				end
+			end
+		end
+	end
+end
+
+local bridgeBlockerCount = 0
+for _ in bridgeBlockers do bridgeBlockerCount += 1 end
+
+print(string.format(
+	"PRISMORA_COLLISION_AUDIT surfaces=%d samples=%d holes=%d maxDeviation=%.3f visibleCyan=%d bridgeDecks=%d bridgeBlockers=%d",
+	#surfaces,
+	samples,
+	holes,
+	maxDeviation,
+	#visibleCyan,
+	bridgeDecks,
+	bridgeBlockerCount
+))
+if #visibleCyan > 0 then
+	warn("PRISMORA_VISIBLE_CYAN " .. table.concat(visibleCyan, " | "))
+end
+if bridgeBlockerCount > 0 then
+	local blockerNames = {}
+	for name in bridgeBlockers do table.insert(blockerNames, name) end
+	warn("PRISMORA_BRIDGE_BLOCKED " .. table.concat(blockerNames, " | "))
+end
+
+-- Gate 1 character probes are opt-in. They deliberately teleport and launch the
+-- character, so running them during a normal playtest looks like a gameplay bug.
+if workspace:GetAttribute("PrismoraRunCharacterAudit") ~= true then
+	print("PRISMORA_CHARACTER_AUDIT skipped=normal_playtest")
+	return
+end
+
+local probeStarted = false
+local function waitForSafeCharacter(root, humanoid, timeout)
+	local started = os.clock()
+	repeat
+		task.wait(0.05)
+		local position = root.Position
+		if position.Y > 24
+			and math.abs(position.X) < 390
+			and math.abs(position.Z) < 390
+			and humanoid.FloorMaterial ~= Enum.Material.Air then
+			return true, os.clock() - started
+		end
+	until os.clock() - started >= timeout or not root.Parent or humanoid.Health <= 0
+	return false, os.clock() - started
+end
+
+local function runCharacterProbes(player, character)
+	if probeStarted then return end
+	probeStarted = true
+	local humanoid = character:WaitForChild("Humanoid", 10)
+	local root = character:WaitForChild("HumanoidRootPart", 10)
+	if not humanoid or not root then
+		warn("PRISMORA_CHARACTER_AUDIT unavailable=no_character")
+		return
+	end
+
+	task.wait(2)
+	local spawn = workspace:GetAttribute("PrismoraSpawnPoint") or root.Position
+	local teleportPass = 0
+	local teleportTotal = 0
+	local worstRecovery = 0
+	for _, y in { -300, -50, -2 } do
+		for _ = 1, 3 do
+			teleportTotal += 1
+			character:PivotTo(CFrame.new(spawn.X, y, spawn.Z))
+			root.AssemblyLinearVelocity = Vector3.zero
+			local passed, elapsed = waitForSafeCharacter(root, humanoid, 2)
+			worstRecovery = math.max(worstRecovery, elapsed)
+			if passed then teleportPass += 1 end
+		end
+	end
+
+	local knockbackPass = 0
+	local knockbackTotal = 16
+	for index = 1, knockbackTotal do
+		local angle = ((index - 1) / knockbackTotal) * math.pi * 2
+		character:PivotTo(CFrame.new(spawn + Vector3.new(0, 4, 0)))
+		root.AssemblyLinearVelocity = Vector3.new(math.cos(angle) * 200, 60, math.sin(angle) * 200)
+		local passed, elapsed = waitForSafeCharacter(root, humanoid, 2)
+		worstRecovery = math.max(worstRecovery, elapsed)
+		if passed then knockbackPass += 1 end
+	end
+
+	print(string.format(
+		"PRISMORA_CHARACTER_AUDIT teleport=%d/%d knockback=%d/%d worstRecovery=%.2fs",
+		teleportPass,
+		teleportTotal,
+		knockbackPass,
+		knockbackTotal,
+		worstRecovery
+	))
+	if teleportPass ~= teleportTotal or knockbackPass ~= knockbackTotal then
+		warn("PRISMORA_GATE1_FAIL character_recovery")
+	else
+		print("PRISMORA_GATE1_CHARACTER_PASS")
+	end
+end
+
+local function watchPlayer(player)
+	player.CharacterAdded:Connect(function(character)
+		task.spawn(runCharacterProbes, player, character)
+	end)
+	if player.Character then
+		task.spawn(runCharacterProbes, player, player.Character)
+	end
+end
+
+Players.PlayerAdded:Connect(watchPlayer)
+for _, player in Players:GetPlayers() do
+	watchPlayer(player)
+end
+]]></string>
+      </Properties>
+    </Item>
+    <Item class="Script" referent="4">
+      <Properties>
+        <string name="Name">CrystalQuest</string>
+        <token name="RunContext">0</token>
+        <string name="Source"><![CDATA[local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+
+repeat task.wait(0.1) until workspace:GetAttribute("PrismoraReady")
+
+local world = workspace:WaitForChild("PrismoraWorld")
+local remote = ReplicatedStorage:WaitForChild("PrismoraEvent")
+local spawn = workspace:WaitForChild("PrismoraSpawn")
+
+local crystalFolder = Instance.new("Folder")
+crystalFolder.Name = "PrismoraCrystals"
+crystalFolder.Parent = workspace
+
+local COLORS = {
+	Color3.fromRGB(255, 201, 74),
+	Color3.fromRGB(255, 218, 104),
+	Color3.fromRGB(255, 190, 58),
+}
+
+local function getCrystals(player)
+	local stats = player:FindFirstChild("leaderstats")
+	return stats and stats:FindFirstChild("Cristalli")
+end
+
+local function celebrate(player)
+	if player:GetAttribute("PrismoraHero") then
+		return
+	end
+	player:SetAttribute("PrismoraHero", true)
+	remote:FireClient(player, "HeroUnlocked")
+
+	local character = player.Character
+	if character then
+		local highlight = Instance.new("Highlight")
+		highlight.Name = "PrismoraHeroAura"
+		highlight.FillColor = Color3.fromRGB(107, 255, 234)
+		highlight.FillTransparency = 0.55
+		highlight.OutlineColor = Color3.fromRGB(255, 118, 222)
+		highlight.OutlineTransparency = 0.08
+		highlight.Parent = character
+	end
+end
+
+local function collect(crystal, player)
+	if not crystal:GetAttribute("Active") then
+		return
+	end
+	crystal:SetAttribute("Active", false)
+	crystal.CanTouch = false
+
+	local crystals = getCrystals(player)
+	if crystals then
+		crystals.Value += 1
+		remote:FireClient(player, "CrystalCollected", crystals.Value)
+		if crystals.Value >= 10 then
+			celebrate(player)
+		end
+	end
+
+	TweenService:Create(
+		crystal,
+		TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.In),
+		{ Size = Vector3.new(0.1, 0.1, 0.1), Transparency = 1 }
+	):Play()
+
+	task.delay(12, function()
+		if crystal.Parent then
+			crystal.Size = Vector3.new(1.6, 4.2, 1.6)
+			crystal.Transparency = 0.08
+			crystal.CanTouch = true
+			crystal:SetAttribute("Active", true)
+		end
+	end)
+end
+
+local rayParams = RaycastParams.new()
+rayParams.FilterType = Enum.RaycastFilterType.Include
+rayParams.FilterDescendantsInstances = { world }
+
+local capitalCenter = workspace:GetAttribute("PrismoraCapitalCenter") or spawn.Position
+local arenaCenter = workspace:GetAttribute("PrismoraArenaCenter") or (capitalCenter + Vector3.new(0, 0, -330))
+local ZONES = {
+	capitalCenter + Vector3.new(-18, 0, 34),
+	capitalCenter + Vector3.new(18, 0, 34),
+	capitalCenter + Vector3.new(-44, 0, -34),
+	arenaCenter + Vector3.new(-52, 0, -52),
+	arenaCenter + Vector3.new(8, 0, 12),
+	arenaCenter + Vector3.new(58, 0, 58),
+}
+
+-- Gold always means reward in the new empire. Crystals live in the dense
+-- capital ring and inside the expedition arena; none lead to empty islands.
+for index = 1, 30 do
+	local zone = ZONES[((index - 1) % #ZONES) + 1]
+	local localIndex = math.floor((index - 1) / #ZONES)
+	local angle = math.rad((localIndex * 61) + (((index - 1) % #ZONES) * 17))
+	local radius = 7 + ((localIndex % 3) * 6)
+	local zoneCenter = zone
+	local probe = zoneCenter + Vector3.new(math.cos(angle) * radius, 110, math.sin(angle) * radius)
+	local hit = workspace:Raycast(probe, Vector3.new(0, -150, 0), rayParams)
+	local position = hit and (hit.Position + Vector3.new(0, 2.3, 0)) or (zoneCenter + Vector3.new(math.cos(angle) * radius, 2.3, math.sin(angle) * radius))
+
+	local crystal = Instance.new("Part")
+	crystal.Name = string.format("Crystal%02d", index)
+	crystal.Anchored = true
+	crystal.CanCollide = false
+	crystal.CanTouch = true
+	crystal.CanQuery = false
+	crystal.Material = Enum.Material.Neon
+	crystal.Color = COLORS[((index - 1) % #COLORS) + 1]
+	crystal.Transparency = 0.08
+	crystal.Size = Vector3.new(1.6, 4.2, 1.6)
+	crystal.CFrame = CFrame.new(position) * CFrame.Angles(0, angle, math.rad(45))
+	crystal:SetAttribute("PrismoraBaseCFrame", crystal.CFrame)
+	crystal:SetAttribute("PrismoraAnimationPhase", index)
+	crystal:SetAttribute("Active", true)
+	crystal.Parent = crystalFolder
+
+	if index <= 6 then
+		local light = Instance.new("PointLight")
+		light.Color = crystal.Color
+		light.Brightness = 0.55
+		light.Range = 8
+		light.Shadows = false
+		light.Parent = crystal
+	end
+
+	crystal.Touched:Connect(function(hitPart)
+		local character = hitPart:FindFirstAncestorOfClass("Model")
+		local player = character and Players:GetPlayerFromCharacter(character)
+		if player then
+			collect(crystal, player)
+		end
+	end)
+
+end
+
+local function setupPlayer(player)
+	local leaderstats = player:FindFirstChild("leaderstats") or Instance.new("Folder")
+	leaderstats.Name = "leaderstats"
+	leaderstats.Parent = player
+
+	local crystals = leaderstats:FindFirstChild("Cristalli") or Instance.new("IntValue")
+	crystals.Name = "Cristalli"
+	crystals.Parent = leaderstats
+
+	local fragments = leaderstats:FindFirstChild("Frammenti") or Instance.new("IntValue")
+	fragments.Name = "Frammenti"
+	fragments.Parent = leaderstats
+
+	local defeats = leaderstats:FindFirstChild("Sconfitte") or Instance.new("IntValue")
+	defeats.Name = "Sconfitte"
+	defeats.Parent = leaderstats
+
+	player.CharacterAdded:Connect(function(character)
+		local humanoid = character:WaitForChild("Humanoid")
+		humanoid.WalkSpeed = 20
+		humanoid.JumpHeight = 9
+	end)
+end
+
+Players.PlayerAdded:Connect(setupPlayer)
+for _, player in Players:GetPlayers() do
+	setupPlayer(player)
+end
+]]></string>
+      </Properties>
+    </Item>
+    <Item class="Script" referent="5">
+      <Properties>
+        <string name="Name">PrismoraWorld</string>
+        <token name="RunContext">0</token>
+        <string name="Source"><![CDATA[local InsertService = game:GetService("InsertService")
+local Lighting = game:GetService("Lighting")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local ASSETS = {
+	{ name = "Island", id = 89621275204493, collidable = false },
+	{ name = "Castle", id = 129541222713048, collidable = false },
+	{ name = "Cottage", id = 78727486552489, collidable = false },
+	{ name = "Vegetation", id = 90302038650932, collidable = false },
+	{ name = "Decorations", id = 123657820780419, collidable = false },
+}
+
+local CAPITAL_ASSET_ID = 135905587438926
+local CAPITAL_VISUAL_SCALE = 188 / 144
+local CAPITAL_PATH_TOP = 1.65 * CAPITAL_VISUAL_SCALE
+
+local WORLD_ORIGIN = CFrame.new(0, 58, 0)
+local WORLD_SCALE = 3.2
+local FALL_RECOVERY_Y = 24
+local WORLD_EDGE_LIMIT = 520
+
+-- The original Blender island becomes the central castle district. Four cloned
+-- landmasses turn it into an explorable archipelago without making the castle,
+-- trees and cottage comically large compared with the player.
+local DISTRICTS = {
+	{ name = "Sunreach", displayName = "REGNO SOLARE", purpose = "FORGIA E BOSS", offset = Vector3.new(155, -3, 4), scale = 1.22, rotation = 14, color = Color3.fromRGB(255, 199, 92) },
+	{ name = "MoonGarden", displayName = "GIARDINO LUNARE", purpose = "EROI E MISTERI", offset = Vector3.new(-150, -4, -8), scale = 1.18, rotation = -18, color = Color3.fromRGB(184, 119, 255) },
+	{ name = "Skyport", displayName = "PORTO CELESTE", purpose = "SHUTTLE E CORSE", offset = Vector3.new(4, -5, -132), scale = 1.10, rotation = 176, color = Color3.fromRGB(95, 224, 255) },
+	{ name = "HeroArena", displayName = "ARENA DEGLI EROI", purpose = "ONDATE E RAID", offset = Vector3.new(12, -3, 145), scale = 1.30, rotation = -8, color = Color3.fromRGB(255, 103, 190) },
+}
+
+local function addPostProcessing()
+	for _, child in Lighting:GetChildren() do
+		if child:GetAttribute("PrismoraEffect") then
+			child:Destroy()
+		end
+	end
+
+	local atmosphere = Instance.new("Atmosphere")
+	atmosphere.Name = "PrismoraAtmosphere"
+	Lighting.Brightness = 2.5
+	Lighting.ExposureCompensation = 0.25
+	Lighting.ClockTime = 14.2
+	Lighting.GeographicLatitude = 20
+	Lighting.Ambient = Color3.fromRGB(75, 78, 92)
+	Lighting.OutdoorAmbient = Color3.fromRGB(125, 128, 145)
+	Lighting.EnvironmentDiffuseScale = 0.6
+	Lighting.EnvironmentSpecularScale = 0.3
+
+	atmosphere.Density = 0.28
+	atmosphere.Offset = 0.22
+	atmosphere.Color = Color3.fromRGB(200, 225, 255)
+	atmosphere.Decay = Color3.fromRGB(120, 145, 190)
+	atmosphere.Glare = 0.15
+	atmosphere.Haze = 1.8
+	atmosphere:SetAttribute("PrismoraEffect", true)
+	atmosphere.Parent = Lighting
+
+	local bloom = Instance.new("BloomEffect")
+	bloom.Name = "PrismoraBloom"
+	bloom.Intensity = 0.25
+	bloom.Size = 22
+	bloom.Threshold = 1.2
+	bloom:SetAttribute("PrismoraEffect", true)
+	bloom.Parent = Lighting
+
+	local color = Instance.new("ColorCorrectionEffect")
+	color.Name = "PrismoraColor"
+	color.Brightness = 0.01
+	color.Contrast = 0.06
+	color.Saturation = 0.07
+	color.TintColor = Color3.fromRGB(255, 252, 246)
+	color:SetAttribute("PrismoraEffect", true)
+	color.Parent = Lighting
+
+end
+
+local function configureParts(container, canCollide)
+	for _, item in container:GetDescendants() do
+		if item:IsA("BasePart") then
+			item.Anchored = true
+			item.CanCollide = canCollide
+			item.CanTouch = false
+			-- Imported meshes are visual only. Gameplay always uses thick Roblox
+			-- primitives so mesh collision fidelity can never swallow a player.
+			item.CanQuery = canCollide
+			item.CastShadow = true
+		end
+	end
+end
+
+local function addFallbackIsland(world)
+	local base = Instance.new("Part")
+	base.Name = "FallbackIsland"
+	base.Anchored = true
+	base.Size = Vector3.new(430, 8, 350)
+	base.CFrame = WORLD_ORIGIN
+	base.Material = Enum.Material.Grass
+	base.Color = Color3.fromRGB(88, 128, 62)
+	base.Parent = world
+
+	local rock = Instance.new("Part")
+	rock.Name = "FallbackRock"
+	rock.Anchored = true
+	rock.Size = Vector3.new(410, 22, 330)
+	rock.CFrame = WORLD_ORIGIN * CFrame.new(0, -14, 0)
+	rock.Material = Enum.Material.Slate
+	rock.Color = Color3.fromRGB(87, 57, 46)
+	rock.Parent = world
+end
+
+local function createCheckpoint(parent, position, accentColor, name)
+	local checkpoint = Instance.new("Part")
+	checkpoint.Name = name .. "Checkpoint"
+	checkpoint.Anchored = true
+	checkpoint.CanCollide = false
+	checkpoint.CanTouch = true
+	checkpoint.Material = Enum.Material.Neon
+	checkpoint.Color = accentColor
+	-- Technical checkpoint trigger: never expose collision/debug geometry to players.
+	checkpoint.Transparency = 1
+	checkpoint.Size = Vector3.new(1.4, 4, 1.4)
+	checkpoint.CFrame = CFrame.new(position + Vector3.new(0, 2, 0)) * CFrame.Angles(0, 0, math.rad(45))
+	checkpoint.Parent = parent
+
+	checkpoint.Touched:Connect(function(hit)
+		local character = hit:FindFirstAncestorOfClass("Model")
+		local player = character and Players:GetPlayerFromCharacter(character)
+		if player then
+			player:SetAttribute("PrismoraCheckpoint", position + Vector3.new(0, 4, 0))
+		end
+	end)
+end
+
+local function createWalkSurface(parent, island, name, accentColor)
+	local boundsCFrame, boundsSize = island:GetBoundingBox()
+	local topY = boundsCFrame.Position.Y + (boundsSize.Y * 0.5)
+	local sizeX = math.clamp(boundsSize.X * 0.9, 86, 176)
+	local sizeZ = math.clamp(boundsSize.Z * 0.9, 80, 164)
+	local center = Vector3.new(boundsCFrame.Position.X, topY - 1.25, boundsCFrame.Position.Z)
+
+	local surface = Instance.new("Part")
+	surface.Name = name .. "PlayableSurface"
+	surface.Anchored = true
+	surface.CanCollide = true
+	surface.CanTouch = false
+	surface.Transparency = 1
+	surface.Size = Vector3.new(sizeX, 4, sizeZ)
+	surface.CFrame = CFrame.new(center)
+	surface.Parent = parent
+
+	local surfaceTop = center.Y + (surface.Size.Y * 0.5)
+	local playableCenter = Vector3.new(center.X, surfaceTop, center.Z)
+	createCheckpoint(parent, playableCenter + Vector3.new(0, 1, 0), accentColor, name)
+	return { center = playableCenter, size = Vector2.new(sizeX, sizeZ), topY = surfaceTop }
+end
+
+local function createBridge(parent, fromData, toData, accentColor)
+	local flatDelta = Vector3.new(toData.center.X - fromData.center.X, 0, toData.center.Z - fromData.center.Z)
+	local direction = flatDelta.Unit
+	local fromRadius = math.min(fromData.size.X, fromData.size.Y) * 0.36
+	local toRadius = math.min(toData.size.X, toData.size.Y) * 0.36
+	-- The deck top sits only half a stud above each island surface. The old
+	-- three-stud lip looked like a bridge but stopped a Humanoid at the landing.
+	local startPoint = fromData.center + (direction * fromRadius) + Vector3.new(0, -1.2, 0)
+	local endPoint = toData.center - (direction * toRadius) + Vector3.new(0, -1.2, 0)
+	local length = (endPoint - startPoint).Magnitude
+	local segmentCount = math.max(2, math.ceil(length / 36))
+
+	for index = 1, segmentCount do
+		local alpha0 = (index - 1) / segmentCount
+		local alpha1 = index / segmentCount
+		local a = startPoint:Lerp(endPoint, alpha0)
+		local b = startPoint:Lerp(endPoint, alpha1)
+		local midpoint = (a + b) * 0.5
+		local segmentLength = (b - a).Magnitude + 1.2
+		local bridgeCFrame = CFrame.lookAt(midpoint, b)
+
+		local deck = Instance.new("Part")
+		deck.Name = "CrystalBridgeDeck"
+		deck.Anchored = true
+		deck.CanCollide = true
+		deck.Material = Enum.Material.Cobblestone
+		deck.Color = Color3.fromRGB(232, 205, 164)
+		deck.Size = Vector3.new(24, 3.5, segmentLength)
+		deck.CFrame = bridgeCFrame
+		deck.Parent = parent
+
+		for side = -1, 1, 2 do
+			local rail = Instance.new("Part")
+			rail.Name = "BridgeGlowRail"
+			rail.Anchored = true
+			rail.CanCollide = false
+			rail.Material = Enum.Material.Neon
+			rail.Color = accentColor
+			-- A thin edge light marks the route without looking like a solid cyan wall.
+			rail.Transparency = 0.58
+			rail.Size = Vector3.new(0.28, 0.42, segmentLength)
+			rail.CFrame = bridgeCFrame * CFrame.new(side * 11.35, 1.82, 0)
+			rail.Parent = parent
+
+			local barrier = Instance.new("Part")
+			barrier.Name = "BridgeSafetyBarrier"
+			barrier.Anchored = true
+			barrier.CanCollide = true
+			barrier.Transparency = 1
+			barrier.Size = Vector3.new(1.5, 18, segmentLength)
+			barrier.CFrame = bridgeCFrame * CFrame.new(side * 11.7, 9.5, 0)
+			barrier.Parent = parent
+		end
+	end
+
+	for _, endpoint in { startPoint, endPoint } do
+		local landing = Instance.new("Part")
+		landing.Name = "BridgeLanding"
+		landing.Anchored = true
+		landing.CanCollide = true
+		landing.Material = Enum.Material.Cobblestone
+		landing.Color = Color3.fromRGB(232, 205, 164)
+		landing.Size = Vector3.new(28, 3.5, 24)
+		landing.CFrame = CFrame.new(endpoint)
+		landing.Parent = parent
+	end
+end
+
+local function sideToward(fromPosition, toPosition)
+	local delta = toPosition - fromPosition
+	if math.abs(delta.X) > math.abs(delta.Z) then
+		return delta.X >= 0 and "East" or "West"
+	end
+	return delta.Z >= 0 and "South" or "North"
+end
+
+local function createSafetyPerimeter(parent, data, openSides, accentColor)
+	local gap = 30
+	-- High enough to stop a full dash/knockback arc, not only a walking player.
+	local height = 22
+	local function addSection(name, size, position)
+		local barrier = Instance.new("Part")
+		barrier.Name = name .. "SafetyBarrier"
+		barrier.Anchored = true
+		barrier.CanCollide = true
+		barrier.CanTouch = false
+		barrier.CanQuery = false
+		barrier.Material = Enum.Material.Glass
+		barrier.Color = accentColor
+		barrier.Transparency = 1
+		barrier.Size = size
+		barrier.CFrame = CFrame.new(position)
+		barrier.Parent = parent
+
+		local rail = Instance.new("Part")
+		rail.Name = name .. "SafetyGlow"
+		rail.Anchored = true
+		rail.CanCollide = false
+		rail.CanTouch = false
+		rail.CanQuery = false
+		rail.Material = Enum.Material.Neon
+		rail.Color = accentColor
+		rail.Transparency = 1
+		rail.Size = Vector3.new(size.X, 0.32, size.Z)
+		rail.CFrame = CFrame.new(position + Vector3.new(0, (height * 0.5) - 0.18, 0))
+		rail.Parent = parent
+	end
+
+	for _, side in {
+		{ name = "North", length = data.size.X, edge = Vector3.new(0, 0, -data.size.Y * 0.5), alongX = true },
+		{ name = "South", length = data.size.X, edge = Vector3.new(0, 0, data.size.Y * 0.5), alongX = true },
+		{ name = "East", length = data.size.Y, edge = Vector3.new(data.size.X * 0.5, 0, 0), alongX = false },
+		{ name = "West", length = data.size.Y, edge = Vector3.new(-data.size.X * 0.5, 0, 0), alongX = false },
+	} do
+		local sectionLength = side.length
+		local centers = { 0 }
+		if openSides[side.name] then
+			sectionLength = math.max(4, (side.length - gap) * 0.5)
+			local offset = (gap * 0.5) + (sectionLength * 0.5)
+			centers = { -offset, offset }
+		end
+		for index, centerOffset in centers do
+			local lateral = side.alongX and Vector3.new(centerOffset, 0, 0) or Vector3.new(0, 0, centerOffset)
+			local size = side.alongX and Vector3.new(sectionLength, height, 1.5) or Vector3.new(1.5, height, sectionLength)
+			local position = data.center + side.edge + lateral + Vector3.new(0, height * 0.5, 0)
+			addSection(side.name .. index, size, position)
+		end
+	end
+end
+
+local function createDistrictBeacon(parent, district, position)
+	local beacon = Instance.new("Part")
+	beacon.Name = district.name .. "Beacon"
+	beacon.Anchored = true
+	beacon.CanCollide = false
+	beacon.Material = Enum.Material.Neon
+	beacon.Color = district.color
+	beacon.Size = Vector3.new(4, 18, 4)
+	beacon.CFrame = CFrame.new(position + Vector3.new(0, 16, 0)) * CFrame.Angles(0, 0, math.rad(45))
+	beacon.Parent = parent
+
+	local light = Instance.new("PointLight")
+	light.Color = district.color
+	light.Brightness = 0.85
+	light.Range = 19
+	light.Parent = beacon
+
+	local billboard = Instance.new("BillboardGui")
+	billboard.Name = "DistrictLabel"
+	billboard.Size = UDim2.fromOffset(150, 34)
+	billboard.StudsOffset = Vector3.new(0, 13, 0)
+	billboard.AlwaysOnTop = false
+	billboard.MaxDistance = 52
+	billboard.Parent = beacon
+
+	local label = Instance.new("TextLabel")
+	label.BackgroundColor3 = Color3.fromRGB(19, 24, 44)
+	label.BackgroundTransparency = 0.16
+	label.BorderSizePixel = 0
+	label.Size = UDim2.fromScale(1, 1)
+	label.Font = Enum.Font.GothamBlack
+	label.Text = district.displayName or string.upper(district.name)
+	label.TextColor3 = Color3.new(1, 1, 1)
+	label.TextScaled = true
+	label.Parent = billboard
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 16)
+	corner.Parent = label
+end
+
+local function createRealmGate(parent, capitalData, districtData, district)
+	local delta = Vector3.new(districtData.center.X - capitalData.center.X, 0, districtData.center.Z - capitalData.center.Z)
+	local direction = delta.Unit
+	local gatePosition = capitalData.center + direction * (math.min(capitalData.size.X, capitalData.size.Y) * 0.35)
+	local gateCFrame = CFrame.lookAt(gatePosition, gatePosition + direction)
+
+	for side = -1, 1, 2 do
+		local pillar = Instance.new("Part")
+		pillar.Name = district.name .. "GatePillar"
+		pillar.Anchored = true
+		pillar.CanCollide = true
+		pillar.Material = Enum.Material.Marble
+		pillar.Color = Color3.fromRGB(218, 221, 235)
+		pillar.Size = Vector3.new(2.6, 13, 2.6)
+		pillar.CFrame = gateCFrame * CFrame.new(side * 10.2, 6.5, 0)
+		pillar.Parent = parent
+
+		local rune = Instance.new("Part")
+		rune.Name = district.name .. "GateRune"
+		rune.Anchored = true
+		rune.CanCollide = false
+		rune.Material = Enum.Material.Neon
+		rune.Color = district.color
+		rune.Transparency = 0.22
+		rune.Size = Vector3.new(0.32, 9.2, 2.85)
+		rune.CFrame = gateCFrame * CFrame.new(side * 10.2, 6.6, -1.34)
+		rune.Parent = parent
+	end
+
+	local crown = Instance.new("Part")
+	crown.Name = district.name .. "GateCrown"
+	crown.Anchored = true
+	crown.CanCollide = false
+	crown.Material = Enum.Material.Marble
+	crown.Color = Color3.fromRGB(218, 221, 235)
+	crown.Size = Vector3.new(23, 2.4, 2.8)
+	crown.CFrame = gateCFrame * CFrame.new(0, 12.2, 0)
+	crown.Parent = parent
+
+	local sign = Instance.new("BillboardGui")
+	sign.Name = district.name .. "RealmSign"
+	sign.AlwaysOnTop = false
+	sign.MaxDistance = 46
+	sign.Size = UDim2.fromOffset(220, 50)
+	sign.StudsOffset = Vector3.new(0, 3.5, 0)
+	sign.Parent = crown
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.fromScale(1, 1)
+	label.BackgroundColor3 = Color3.fromRGB(14, 18, 34)
+	label.BackgroundTransparency = 0.08
+	label.BorderSizePixel = 0
+	label.Font = Enum.Font.GothamBlack
+	label.Text = string.format("%s\n%s", district.displayName, district.purpose)
+	label.TextColor3 = Color3.new(1, 1, 1)
+	label.TextScaled = true
+	label.Parent = sign
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 14)
+	corner.Parent = label
+end
+
+local function createCapitalIdentity(parent, capitalData)
+	local anchor = Instance.new("Part")
+	anchor.Name = "PrismoraCapitalIdentity"
+	anchor.Anchored = true
+	anchor.CanCollide = false
+	anchor.CanQuery = false
+	anchor.Transparency = 1
+	anchor.Size = Vector3.one
+	anchor.CFrame = CFrame.new(capitalData.center + Vector3.new(0, 12, 18))
+	anchor.Parent = parent
+
+	local title = Instance.new("BillboardGui")
+	title.Name = "CapitalTitle"
+	title.AlwaysOnTop = false
+	title.MaxDistance = 62
+	title.Size = UDim2.fromOffset(270, 58)
+	title.Parent = anchor
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.fromScale(1, 1)
+	label.BackgroundColor3 = Color3.fromRGB(12, 17, 34)
+	label.BackgroundTransparency = 0.12
+	label.BorderSizePixel = 0
+	label.Font = Enum.Font.GothamBlack
+	label.Text = "CAPITALE PRISMORA\nIL CUORE DELL'IMPERO"
+	label.TextColor3 = Color3.fromRGB(235, 255, 252)
+	label.TextScaled = true
+	label.Parent = title
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 18)
+	corner.Parent = label
+end
+
+local PALETTE = {
+	cream = Color3.fromRGB(255, 246, 229),
+	stone = Color3.fromRGB(232, 201, 138),
+	darkStone = Color3.fromRGB(201, 154, 91),
+	slate = Color3.fromRGB(74, 70, 88),
+	gold = Color3.fromRGB(255, 201, 74),
+	cyan = Color3.fromRGB(70, 224, 255),
+	magenta = Color3.fromRGB(255, 95, 162),
+}
+
+local function makeEmpirePart(parent, name, size, cframe, color, material, collidable, transparency, shape)
+	local part = Instance.new("Part")
+	part.Name = name
+	part.Anchored = true
+	part.CanCollide = collidable == true
+	part.CanTouch = false
+	part.CanQuery = collidable == true
+	part.CastShadow = material ~= Enum.Material.Neon
+	part.Size = size
+	part.CFrame = cframe
+	part.Color = color
+	part.Material = material or Enum.Material.SmoothPlastic
+	part.Transparency = transparency or 0
+	part.Shape = shape or Enum.PartType.Block
+	part.Parent = parent
+	return part
+end
+
+local function makeVerticalCylinder(parent, name, position, diameter, height, color, material, collidable)
+	return makeEmpirePart(
+		parent,
+		name,
+		Vector3.new(height, diameter, diameter),
+		CFrame.new(position) * CFrame.Angles(0, 0, math.rad(90)),
+		color,
+		material,
+		collidable,
+		0,
+		Enum.PartType.Cylinder
+	)
+end
+
+local function createInvisibleRoom(parent, center, width, depth, height, prefix)
+	local thickness = 8
+	for _, wall in {
+		{ "North", Vector3.new(width + thickness * 2, height, thickness), Vector3.new(0, height * 0.5, -(depth * 0.5 + thickness * 0.5)) },
+		{ "South", Vector3.new(width + thickness * 2, height, thickness), Vector3.new(0, height * 0.5, depth * 0.5 + thickness * 0.5) },
+		{ "East", Vector3.new(thickness, height, depth), Vector3.new(width * 0.5 + thickness * 0.5, height * 0.5, 0) },
+		{ "West", Vector3.new(thickness, height, depth), Vector3.new(-(width * 0.5 + thickness * 0.5), height * 0.5, 0) },
+	} do
+		local barrier = makeEmpirePart(parent, prefix .. wall[1] .. "SafetyBarrier", wall[2], CFrame.new(center + wall[3]), PALETTE.cyan, Enum.Material.SmoothPlastic, true, 1)
+		barrier.CanQuery = false
+	end
+	local ceiling = makeEmpirePart(parent, prefix .. "SafetyCeiling", Vector3.new(width + 20, 4, depth + 20), CFrame.new(center + Vector3.new(0, height + 2, 0)), PALETTE.cyan, Enum.Material.SmoothPlastic, true, 1)
+	ceiling.CanQuery = false
+end
+
+local function createHeroStatue(parent, position, color, powered, yaw)
+	local model = Instance.new("Model")
+	model.Name = powered and "AwakenedHeroStatue" or "DormantHeroStatue"
+	model.Parent = parent
+	local baseCFrame = CFrame.new(position) * CFrame.Angles(0, math.rad(yaw or 0), 0)
+	local statueColor = powered and color or Color3.fromRGB(107, 100, 120)
+	makeEmpirePart(model, "Pedestal", Vector3.new(7.5, 3, 7.5), baseCFrame * CFrame.new(0, 1.5, 0), PALETTE.darkStone, Enum.Material.Slate, false)
+	local torso = makeEmpirePart(model, "HeroTorso", Vector3.new(5.5, 7, 3.4), baseCFrame * CFrame.new(0, 7.7, 0), statueColor, Enum.Material.SmoothPlastic, false)
+	makeEmpirePart(model, "HeroHead", Vector3.new(3.2, 3.2, 3.2), baseCFrame * CFrame.new(0, 13, 0), statueColor, Enum.Material.SmoothPlastic, false, 0, Enum.PartType.Ball)
+	for side = -1, 1, 2 do
+		makeEmpirePart(model, "HeroArm", Vector3.new(2.1, 7.2, 2.1), baseCFrame * CFrame.new(side * 4, 7.4, 0) * CFrame.Angles(0, 0, math.rad(side * 12)), statueColor, Enum.Material.SmoothPlastic, false)
+		makeEmpirePart(model, "HeroLeg", Vector3.new(2.2, 5.8, 2.4), baseCFrame * CFrame.new(side * 1.65, 3.1, 0), statueColor, Enum.Material.SmoothPlastic, false)
+	end
+	local crest = makeEmpirePart(model, "HeroCrest", Vector3.new(1.1, 5.8, 1.1), baseCFrame * CFrame.new(0, 16.3, 0) * CFrame.Angles(0, 0, math.rad(45)), statueColor, powered and Enum.Material.Neon or Enum.Material.Slate, false)
+	if powered then
+		local light = Instance.new("PointLight")
+		light.Color = color
+		light.Brightness = 1.2
+		light.Range = 18
+		light.Shadows = false
+		light.Parent = torso
+	end
+	return model
+end
+
+local function createPortal(parent, name, position, lookAt, color, destination, titleText)
+	local model = Instance.new("Model")
+	model.Name = name .. "Portal"
+	model.Parent = parent
+	local frame = CFrame.lookAt(position, Vector3.new(lookAt.X, position.Y, lookAt.Z))
+	for side = -1, 1, 2 do
+		makeEmpirePart(model, "PortalPillar", Vector3.new(3.5, 22, 4.5), frame * CFrame.new(side * 9.5, 11, 0), PALETTE.stone, Enum.Material.SmoothPlastic, true)
+		makeEmpirePart(model, "PortalRune", Vector3.new(0.5, 15, 4.8), frame * CFrame.new(side * 9.5, 11, -2.35), color, Enum.Material.Neon, false, 0.08)
+	end
+	makeEmpirePart(model, "PortalCrown", Vector3.new(22.5, 4, 4.8), frame * CFrame.new(0, 22, 0), PALETTE.stone, Enum.Material.SmoothPlastic, true)
+	local pane = makeEmpirePart(model, "PortalEnergy", Vector3.new(15.5, 18, 0.8), frame * CFrame.new(0, 10, 0), color, Enum.Material.Glass, false, 0.28)
+	pane.CanTouch = destination ~= nil
+	local core = makeEmpirePart(model, "PortalCore", Vector3.new(12.5, 15, 0.32), frame * CFrame.new(0, 10, -0.52), color, Enum.Material.Neon, false, 0.42)
+	core.CanTouch = false
+
+	local gui = Instance.new("BillboardGui")
+	gui.Name = "PortalLabel"
+	gui.Size = UDim2.fromOffset(180, 36)
+	gui.StudsOffset = Vector3.new(0, 16.5, 0)
+	gui.AlwaysOnTop = false
+	gui.MaxDistance = 65
+	gui.Parent = pane
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.fromScale(1, 1)
+	label.BackgroundColor3 = Color3.fromRGB(18, 22, 38)
+	label.BackgroundTransparency = 0.1
+	label.BorderSizePixel = 0
+	label.Font = Enum.Font.GothamBlack
+	label.Text = titleText
+	label.TextColor3 = Color3.new(1, 1, 1)
+	label.TextScaled = true
+	label.Parent = gui
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 14)
+	corner.Parent = label
+
+	if destination then
+		local debounce = {}
+		pane.Touched:Connect(function(hit)
+			local character = hit:FindFirstAncestorOfClass("Model")
+			local player = character and Players:GetPlayerFromCharacter(character)
+			local root = character and character:FindFirstChild("HumanoidRootPart")
+			if not player or not root or debounce[player] then return end
+			debounce[player] = true
+			character:PivotTo(destination)
+			root.AssemblyLinearVelocity = Vector3.zero
+			root.AssemblyAngularVelocity = Vector3.zero
+			player:SetAttribute("PrismoraCheckpoint", destination.Position)
+			task.delay(1, function() debounce[player] = nil end)
+		end)
+	end
+	return model
+end
+
+local function createLighthouse(parent, center)
+	for _, tier in {
+		{ 28, 0, 18, PALETTE.darkStone },
+		{ 22, 3, 15, PALETTE.stone },
+		{ 16, 7, 58, PALETTE.cream },
+		{ 22, 60, 6, PALETTE.stone },
+	} do
+		makeVerticalCylinder(parent, "LighthouseTier", center + Vector3.new(0, tier[2] + tier[3] * 0.5, 0), tier[1], tier[3], tier[4], Enum.Material.SmoothPlastic, tier[2] <= 7)
+	end
+	makeEmpirePart(parent, "LighthouseCore", Vector3.new(4.2, 52, 4.2), CFrame.new(center + Vector3.new(0, 34, 0)) * CFrame.Angles(0, 0, math.rad(45)), PALETTE.cyan, Enum.Material.Neon, false, 0.04)
+	makeEmpirePart(parent, "LighthousePrism", Vector3.new(12, 12, 12), CFrame.new(center + Vector3.new(0, 75, 0)) * CFrame.Angles(math.rad(25), math.rad(45), math.rad(25)), PALETTE.cyan, Enum.Material.Glass, false, 0.16)
+end
+
+local function createImperialTree(parent, position, scale)
+	scale = scale or 1
+	makeEmpirePart(parent, "ImperialTreeTrunk", Vector3.new(2.2, 10, 2.2) * scale, CFrame.new(position + Vector3.new(0, 5 * scale, 0)), Color3.fromRGB(147, 105, 72), Enum.Material.Wood, false)
+	for _, offset in {
+		Vector3.new(0, 10, 0), Vector3.new(-2.4, 9, 0.5), Vector3.new(2.2, 9.5, -0.4),
+	} do
+		makeEmpirePart(parent, "ImperialTreeCanopy", Vector3.new(7.5, 7.5, 7.5) * scale, CFrame.new(position + offset * scale), Color3.fromRGB(66, 153, 91), Enum.Material.SmoothPlastic, false, 0, Enum.PartType.Ball)
+	end
+end
+
+local function createCapital(parent, center)
+	local capital = Instance.new("Model")
+	capital.Name = "PrismoraCapital"
+	capital.Parent = parent
+	makeVerticalCylinder(capital, "CapitalVisualFloor", center - Vector3.new(0, 4, 0), 200, 8, PALETTE.cream, Enum.Material.SmoothPlastic, false)
+	makeEmpirePart(capital, "CapitalPlayableSurface", Vector3.new(184, 8, 184), CFrame.new(center - Vector3.new(0, CAPITAL_PATH_TOP + 4, 0)), PALETTE.cream, Enum.Material.SmoothPlastic, true, 1)
+	-- Collision follows the authored Blender elevations: a low plaza plus four
+	-- slightly raised radial avenues. One giant flat collider made players float
+	-- whenever they left a raised avenue.
+	makeVerticalCylinder(
+		capital,
+		"CapitalInnerPlayableSurface",
+		center + Vector3.new(0, (0.25 - 1.65) * CAPITAL_VISUAL_SCALE, 0),
+		116 * CAPITAL_VISUAL_SCALE,
+		0.65 * CAPITAL_VISUAL_SCALE,
+		PALETTE.cream,
+		Enum.Material.SmoothPlastic,
+		true
+	)
+	for _, angle in { 0, math.pi * 0.5, math.pi, math.pi * 1.5 } do
+		local px = math.cos(angle) * 35 * CAPITAL_VISUAL_SCALE
+		local pz = math.sin(angle) * 35 * CAPITAL_VISUAL_SCALE
+		makeEmpirePart(
+			capital,
+			"CapitalPathPlayableSurface",
+			Vector3.new(20 * CAPITAL_VISUAL_SCALE, 1.3 * CAPITAL_VISUAL_SCALE, 60 * CAPITAL_VISUAL_SCALE),
+			CFrame.new(center + Vector3.new(px, -(1.3 * CAPITAL_VISUAL_SCALE) * 0.5, pz)) * CFrame.Angles(0, -angle, 0),
+			PALETTE.cream,
+			Enum.Material.SmoothPlastic,
+			true,
+			1
+		)
+	end
+	makeVerticalCylinder(capital, "CapitalRockUnderside", center - Vector3.new(0, 15, 0), 194, 22, PALETTE.slate, Enum.Material.Slate, false)
+	makeVerticalCylinder(capital, "AwakeningAltarVisual", center + Vector3.new(0, 1, 0), 36, 3, PALETTE.stone, Enum.Material.SmoothPlastic, false)
+	makeEmpirePart(capital, "AwakeningAltarPlayableSurface", Vector3.new(28, 3, 28), CFrame.new(center + Vector3.new(0, 1, 0)), PALETTE.stone, Enum.Material.SmoothPlastic, true, 1)
+	createLighthouse(capital, center + Vector3.new(0, 2.5, 0))
+
+	-- Two elevated galleries create the hero silhouette from the spawn view.
+	for side = -1, 1, 2 do
+		local galleryCenter = center + Vector3.new(side * 52, 25, -8)
+		makeEmpirePart(capital, "GalleryPlayableSurface", Vector3.new(76, 5, 21), CFrame.new(galleryCenter), PALETTE.stone, Enum.Material.SmoothPlastic, true)
+		makeEmpirePart(capital, "GalleryRock", Vector3.new(70, 10, 17), CFrame.new(galleryCenter - Vector3.new(0, 7, 0)), PALETTE.slate, Enum.Material.Slate, false)
+		for index = 1, 3 do
+			local x = galleryCenter.X + ((index - 2) * 20)
+			local powered = side == -1 or index == 2
+			local statueColor = index == 1 and PALETTE.cyan or (index == 2 and PALETTE.magenta or PALETTE.gold)
+			createHeroStatue(capital, Vector3.new(x, galleryCenter.Y + 2.6, galleryCenter.Z), statueColor, powered, side == -1 and -18 or 18)
+		end
+	end
+
+	local arenaEntry = center + Vector3.new(0, 4, -330) + Vector3.new(-70, 0, -65)
+	createPortal(capital, "Sunreach", center + Vector3.new(0, 0, -72), center, PALETTE.gold, CFrame.lookAt(arenaEntry, arenaEntry + Vector3.new(1, 0, 1)), "SUNREACH • COMBATTI")
+	createPortal(capital, "MoonGarden", center + Vector3.new(72, 0, 0), center, PALETTE.magenta, nil, "MOONGARDEN")
+	createPortal(capital, "Skyport", center + Vector3.new(0, 0, 82), center, PALETTE.cyan, nil, "SKYPORT")
+	createPortal(capital, "HeroArena", center + Vector3.new(-72, 0, 0), center, Color3.fromRGB(176, 118, 255), nil, "HERO ARENA")
+
+	-- Dense, functional-looking props in the otherwise empty radial ring.
+	for _, prop in {
+		{ Vector3.new(-34, 3, 38), PALETTE.cyan },
+		{ Vector3.new(34, 3, 38), PALETTE.gold },
+		{ Vector3.new(-40, 3, -38), PALETTE.magenta },
+		{ Vector3.new(40, 3, -38), PALETTE.cyan },
+	} do
+		makeEmpirePart(capital, "ImperialKiosk", Vector3.new(12, 6, 8), CFrame.new(center + prop[1]) * CFrame.Angles(0, math.rad(12), 0), PALETTE.darkStone, Enum.Material.Wood, true)
+		makeEmpirePart(capital, "InteractiveMarker", Vector3.new(2.2, 5.2, 2.2), CFrame.new(center + prop[1] + Vector3.new(0, 5.6, 0)) * CFrame.Angles(0, 0, math.rad(45)), prop[2], Enum.Material.Neon, false, 0.08)
+	end
+	for index = 1, 10 do
+		local angle = math.rad(16 + index * 34)
+		local radius = index % 2 == 0 and 82 or 76
+		createImperialTree(capital, center + Vector3.new(math.cos(angle) * radius, 0, math.sin(angle) * radius), 0.82 + (index % 3) * 0.08)
+	end
+	createInvisibleRoom(capital, center, 200, 200, 90, "Capital")
+	return capital
+end
+
+local function loadCapitalVisual(parent, capitalCenter)
+	local ok, asset = pcall(function()
+		return InsertService:LoadAsset(CAPITAL_ASSET_ID)
+	end)
+	if not ok or not asset then
+		warn(string.format("Prismora capital asset failed to load: %s", tostring(asset)))
+		return false
+	end
+
+	asset.Name = "PrismoraCapitalBlender"
+	configureParts(asset, false)
+	asset.Parent = parent
+	local _, sourceSize = asset:GetBoundingBox()
+	local widest = math.max(sourceSize.X, sourceSize.Z)
+	if widest > 0 then
+		asset:ScaleTo(188 / widest)
+	end
+	local visualCFrame, visualSize = asset:GetBoundingBox()
+	local tilePart = asset:FindFirstChild("Empire_WarmTile", true)
+	-- Roblox rebuilds the joined FBX pivot, so use the validated traversal plane
+	-- within WarmTile's imported bounds. The separate colliders above reproduce
+	-- the authored height changes rather than flattening the entire capital.
+	local floorY = if tilePart and tilePart:IsA("BasePart")
+		then (tilePart.Position.Y - tilePart.Size.Y * 0.5) + tilePart.Size.Y * 0.64
+		else visualCFrame.Position.Y - visualSize.Y * 0.24
+	local horizontalDelta = Vector3.new(capitalCenter.X - visualCFrame.Position.X, 0, capitalCenter.Z - visualCFrame.Position.Z)
+	-- floorY is the imported WarmTile reference plane. The authored radial walks
+	-- sit CAPITAL_PATH_TOP above the platform datum used by the gameplay world.
+	-- Lowering the visual by that exact authored offset makes visible stone and
+	-- invisible traversal colliders agree; otherwise avatars appear half buried.
+	asset:PivotTo(asset:GetPivot() + horizontalDelta + Vector3.new(0, capitalCenter.Y - floorY - CAPITAL_PATH_TOP, 0))
+
+	local lightCount = 0
+	for _, item in asset:GetDescendants() do
+		if item:IsA("BasePart") then
+			local lowerName = string.lower(item.Name)
+			if string.find(lowerName, "cyanenergy", 1, true) or string.find(lowerName, "prismglass", 1, true) then
+				item.Material = Enum.Material.Glass
+				item.Color = Color3.fromRGB(55, 176, 215)
+				item.Transparency = 0.42
+				item.Reflectance = 0.04
+				item.CastShadow = false
+			elseif string.find(lowerName, "magentaenergy", 1, true) then
+				item.Material = Enum.Material.Glass
+				item.Color = Color3.fromRGB(205, 70, 146)
+				item.Transparency = 0.4
+				item.Reflectance = 0.04
+				item.CastShadow = false
+			elseif string.find(lowerName, "purpleenergy", 1, true) then
+				item.Material = Enum.Material.Glass
+				item.Color = Color3.fromRGB(129, 80, 199)
+				item.Transparency = 0.4
+				item.Reflectance = 0.04
+				item.CastShadow = false
+			elseif string.find(lowerName, "goldenergy", 1, true) then
+				item.Material = Enum.Material.Glass
+				item.Color = Color3.fromRGB(198, 132, 36)
+				item.Transparency = 0.58
+				item.Reflectance = 0.05
+				item.CastShadow = false
+			elseif string.find(lowerName, "imperialgold", 1, true) then
+				item.Material = Enum.Material.Metal
+				item.Color = Color3.fromRGB(238, 160, 53)
+			elseif string.find(lowerName, "warmtile", 1, true) then
+				item.Material = Enum.Material.Cobblestone
+				item.Color = Color3.fromRGB(235, 207, 163)
+			elseif string.find(lowerName, "creamstone", 1, true) then
+				item.Material = Enum.Material.Limestone
+				item.Color = Color3.fromRGB(219, 199, 164)
+			elseif string.find(lowerName, "palestone", 1, true) then
+				item.Material = Enum.Material.Marble
+				item.Color = Color3.fromRGB(157, 169, 190)
+			elseif string.find(lowerName, "darkstone", 1, true) then
+				item.Material = Enum.Material.Slate
+				item.Color = Color3.fromRGB(43, 55, 79)
+			elseif string.find(lowerName, "floatingrock", 1, true) then
+				item.Material = Enum.Material.Slate
+				item.Color = Color3.fromRGB(76, 52, 56)
+			elseif string.find(lowerName, "herostone", 1, true) then
+				item.Material = Enum.Material.Metal
+				item.Color = Color3.fromRGB(74, 91, 126)
+			elseif string.find(lowerName, "warmwood", 1, true) then
+				item.Material = Enum.Material.Wood
+				item.Color = Color3.fromRGB(115, 67, 37)
+			elseif string.find(lowerName, "emeraldleaves", 1, true) then
+				item.Material = Enum.Material.Grass
+				item.Color = Color3.fromRGB(54, 153, 92)
+			elseif string.find(lowerName, "deepleaves", 1, true) then
+				item.Material = Enum.Material.Grass
+				item.Color = Color3.fromRGB(27, 97, 73)
+			end
+			if item.Material == Enum.Material.Neon and lightCount < 1 then
+				lightCount += 1
+				local light = Instance.new("PointLight")
+				light.Color = item.Color
+				light.Brightness = 0.35
+				light.Range = 12
+				light.Shadows = false
+				light.Parent = item
+			end
+		end
+	end
+
+	-- Keep the procedural capital solely as invisible collision, portal triggers
+	-- and fall recovery. Blender owns every visible architectural surface.
+	local proceduralCapital = parent:FindFirstChild("PrismoraCapital")
+	if proceduralCapital then
+		for _, item in proceduralCapital:GetDescendants() do
+			if item:IsA("BasePart") then
+				item.Transparency = 1
+				item.CastShadow = false
+				local keepCollision = string.find(item.Name, "PlayableSurface", 1, true) ~= nil or string.find(item.Name, "SafetyBarrier", 1, true) ~= nil
+				item.CanCollide = keepCollision
+			end
+		end
+	end
+	print(string.format("PRISMORA_CAPITAL_ASSET_READY asset=%d size=%.1f,%.1f,%.1f", CAPITAL_ASSET_ID, visualSize.X, visualSize.Y, visualSize.Z))
+	return true
+end
+
+local function createSunreachArena(parent, center, capitalCenter)
+	local arena = Instance.new("Model")
+	arena.Name = "SunreachArena"
+	arena.Parent = parent
+	makeEmpirePart(arena, "ArenaPlayableSurface", Vector3.new(200, 8, 200), CFrame.new(center - Vector3.new(0, 4, 0)), PALETTE.stone, Enum.Material.SmoothPlastic, true)
+	makeEmpirePart(arena, "ArenaRockUnderside", Vector3.new(194, 24, 194), CFrame.new(center - Vector3.new(0, 19, 0)), PALETTE.slate, Enum.Material.Slate, false)
+
+	-- The far corner rises toward the boss altar; wide ramps remain easy on mobile.
+	makeEmpirePart(arena, "SunreachTerracePlayableSurface", Vector3.new(72, 12, 72), CFrame.new(center + Vector3.new(55, 6, 55)), PALETTE.cream, Enum.Material.SmoothPlastic, true)
+	makeEmpirePart(arena, "SunreachRamp", Vector3.new(26, 5, 46), CFrame.new(center + Vector3.new(18, 5.5, 35)) * CFrame.Angles(math.rad(-14), 0, 0), PALETTE.cream, Enum.Material.SmoothPlastic, true)
+	makeVerticalCylinder(arena, "BossAltarVisual", center + Vector3.new(76, 14, 76), 38, 5, PALETTE.darkStone, Enum.Material.Slate, true)
+	for _, pylon in {
+		Vector3.new(32, 14, 58), Vector3.new(58, 14, 32), Vector3.new(58, 14, 58),
+	} do
+		makeEmpirePart(arena, "SunreachPylon", Vector3.new(4, 13, 4), CFrame.new(center + pylon), PALETTE.darkStone, Enum.Material.Slate, true)
+		makeEmpirePart(arena, "PylonCore", Vector3.new(1.6, 8, 1.6), CFrame.new(center + pylon + Vector3.new(0, 2, 0)) * CFrame.Angles(0, 0, math.rad(45)), PALETTE.cyan, Enum.Material.Neon, false, 0.06)
+	end
+	for index = 1, 14 do
+		local angle = (index / 14) * math.pi * 2
+		local radius = index % 2 == 0 and 72 or 88
+		local rock = makeEmpirePart(arena, "SunreachRuin", Vector3.new(5 + index % 4, 7 + index % 8, 5 + index % 3), CFrame.new(center + Vector3.new(math.cos(angle) * radius, 3, math.sin(angle) * radius)) * CFrame.Angles(0, angle + 0.2, math.rad((index % 3) - 1) * 0.08), index % 3 == 0 and PALETTE.darkStone or PALETTE.stone, Enum.Material.Slate, true)
+		rock.CastShadow = index % 2 == 0
+	end
+
+	local returnPosition = capitalCenter + Vector3.new(0, 4, 32)
+	createPortal(arena, "ReturnCapital", center + Vector3.new(-72, 0, -72), center, PALETTE.cyan, CFrame.lookAt(returnPosition, capitalCenter), "TORNA ALLA CAPITALE")
+	createInvisibleRoom(arena, center, 200, 200, 60, "Arena")
+	return arena
+end
+
+local function createEmpirePrototype(world)
+	local centralIsland = world:FindFirstChild("PrismoraIsland")
+	local capitalCenter = centralIsland and centralIsland:IsA("Model") and (select(1, centralIsland:GetBoundingBox())).Position or WORLD_ORIGIN.Position
+	if centralIsland and centralIsland:IsA("Model") then
+		local _, boundsSize = centralIsland:GetBoundingBox()
+		capitalCenter = Vector3.new(capitalCenter.X, capitalCenter.Y + (boundsSize.Y * 0.5), capitalCenter.Z)
+	else
+		capitalCenter = WORLD_ORIGIN.Position + Vector3.new(0, 4, 0)
+	end
+	-- The original castle/cottage clusters were authored for the small island and
+	-- blocked the deliberate spawn composition. Keep the island underside, but
+	-- replace those overlapping props with the new lighthouse, portals and trees.
+	for _, visualName in { "PrismoraCastle", "PrismoraCottage", "PrismoraVegetation", "PrismoraDecorations" } do
+		local visual = world:FindFirstChild(visualName)
+		if visual then visual:Destroy() end
+	end
+	local arenaCenter = capitalCenter + Vector3.new(0, 0, -330)
+	createCapital(world, capitalCenter)
+	local capitalLoaded = loadCapitalVisual(world, capitalCenter)
+	if capitalLoaded and centralIsland then
+		centralIsland:Destroy()
+	end
+	createSunreachArena(world, arenaCenter, capitalCenter)
+	workspace:SetAttribute("PrismoraSpawnPoint", capitalCenter + Vector3.new(0, 4, 50))
+	workspace:SetAttribute("PrismoraSpawnLookAt", capitalCenter + Vector3.new(0, 18, -24))
+	workspace:SetAttribute("PrismoraCapitalCenter", capitalCenter)
+	workspace:SetAttribute("PrismoraArenaCenter", arenaCenter)
+	workspace:SetAttribute("PrismoraCombatCenter", arenaCenter + Vector3.new(0, 2, 0))
+	workspace:SetAttribute("PrismoraCombatHalfSizeX", 88)
+	workspace:SetAttribute("PrismoraCombatHalfSizeZ", 88)
+end
+
+addPostProcessing()
+
+local oldWorld = workspace:FindFirstChild("PrismoraWorld")
+if oldWorld then
+	oldWorld:Destroy()
+end
+
+local world = Instance.new("Model")
+world.Name = "PrismoraWorld"
+world.Parent = workspace
+
+local loadedCount = 0
+for _, asset in ASSETS do
+	local ok, result = pcall(function()
+		return InsertService:LoadAsset(asset.id)
+	end)
+
+	if ok and result then
+		result.Name = "Prismora" .. asset.name
+		configureParts(result, asset.collidable)
+		result.Parent = world
+		loadedCount += 1
+	else
+		warn(string.format("Prismora asset %s failed to load: %s", asset.name, tostring(result)))
+	end
+end
+
+if loadedCount == 0 then
+	addFallbackIsland(world)
+	createEmpirePrototype(world)
+else
+	world:ScaleTo(WORLD_SCALE)
+	world:PivotTo(WORLD_ORIGIN)
+	createEmpirePrototype(world)
+end
+
+-- Start on the wide south bridge instead of raycasting against the imported
+-- island mesh. Its collision hull can report a point inside the floating rock.
+-- This fixed point is open, safe, and immediately shows the larger world.
+local spawnPosition = workspace:GetAttribute("PrismoraSpawnPoint") or Vector3.new(0, 70, 0)
+local fallRecoveryHeight = math.max(FALL_RECOVERY_Y, spawnPosition.Y - 22)
+
+local spawn = Instance.new("SpawnLocation")
+spawn.Name = "PrismoraSpawn"
+spawn.Anchored = true
+spawn.CanCollide = false
+spawn.Neutral = true
+spawn.Material = Enum.Material.Neon
+spawn.Color = Color3.fromRGB(118, 255, 235)
+spawn.Transparency = 1
+spawn.Size = Vector3.new(8, 1, 8)
+local lookAt = workspace:GetAttribute("PrismoraSpawnLookAt") or (spawnPosition + Vector3.new(0, 0, -20))
+spawn.CFrame = CFrame.lookAt(spawnPosition, Vector3.new(lookAt.X, spawnPosition.Y, lookAt.Z))
+spawn.Parent = workspace
+
+local glow = Instance.new("PointLight")
+glow.Color = spawn.Color
+glow.Brightness = 0
+glow.Range = 0
+glow.Parent = spawn
+
+-- Touched events can be skipped when a fast character tunnels through a thin
+-- part. Polling also recovers a player before Roblox destroys the character.
+local lastSafeCFrame = {}
+local unsupportedSince = {}
+local recoveryRayParams = RaycastParams.new()
+recoveryRayParams.FilterType = Enum.RaycastFilterType.Include
+recoveryRayParams.FilterDescendantsInstances = { world }
+
+local function safeGroundBelow(root)
+	local result = workspace:Raycast(root.Position + Vector3.new(0, 2, 0), Vector3.new(0, -40, 0), recoveryRayParams)
+	if not result then
+		return nil
+	end
+	local name = result.Instance.Name
+	if not string.find(name, "PlayableSurface", 1, true) then
+		return nil
+	end
+	return result.Position
+end
+
+local function recoveryCFrame(player)
+	local checkpoint = player:GetAttribute("PrismoraCheckpoint")
+	if typeof(checkpoint) == "Vector3" then
+		return CFrame.new(checkpoint + Vector3.new(0, 3, 0))
+	end
+	if lastSafeCFrame[player] then
+		return lastSafeCFrame[player]
+	end
+	return CFrame.new(spawnPosition + Vector3.new(0, 3, 0))
+end
+
+Players.PlayerRemoving:Connect(function(player)
+	lastSafeCFrame[player] = nil
+	unsupportedSince[player] = nil
+end)
+
+task.spawn(function()
+	while world.Parent do
+		for _, player in Players:GetPlayers() do
+			local character = player.Character
+			local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+			local root = character and character:FindFirstChild("HumanoidRootPart")
+			if humanoid and root and humanoid.Health > 0 then
+				local position = root.Position
+				local outside = math.abs(position.X) > WORLD_EDGE_LIMIT or math.abs(position.Z) > WORLD_EDGE_LIMIT
+				if position.Y < fallRecoveryHeight or outside then
+					character:PivotTo(recoveryCFrame(player))
+					root.AssemblyLinearVelocity = Vector3.zero
+					root.AssemblyAngularVelocity = Vector3.zero
+					humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+					unsupportedSince[player] = nil
+				elseif humanoid.FloorMaterial ~= Enum.Material.Air and math.abs(root.AssemblyLinearVelocity.Y) < 12 then
+					local groundPosition = safeGroundBelow(root)
+					local look = root.CFrame.LookVector
+					local flatLook = Vector3.new(look.X, 0, look.Z)
+					if flatLook.Magnitude < 0.1 then flatLook = Vector3.new(0, 0, -1) end
+					if groundPosition then
+						local safePosition = groundPosition + Vector3.new(0, 4, 0)
+						lastSafeCFrame[player] = CFrame.lookAt(safePosition, safePosition + flatLook.Unit)
+					end
+					unsupportedSince[player] = nil
+				elseif humanoid.FloorMaterial == Enum.Material.Air then
+					if safeGroundBelow(root) then
+						unsupportedSince[player] = nil
+					else
+						unsupportedSince[player] = unsupportedSince[player] or os.clock()
+					end
+					if unsupportedSince[player] and os.clock() - unsupportedSince[player] >= 0.65 then
+						character:PivotTo(recoveryCFrame(player))
+						root.AssemblyLinearVelocity = Vector3.zero
+						root.AssemblyAngularVelocity = Vector3.zero
+						humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+						unsupportedSince[player] = nil
+					end
+				else
+					unsupportedSince[player] = nil
+				end
+			end
+		end
+		task.wait(0.2)
+	end
+end)
+
+local remote = ReplicatedStorage:FindFirstChild("PrismoraEvent") or Instance.new("RemoteEvent")
+remote.Name = "PrismoraEvent"
+remote.Parent = ReplicatedStorage
+
+workspace:SetAttribute("PrismoraLoadedAssets", loadedCount)
+workspace:SetAttribute("PrismoraWorldSpan", 700)
+workspace:SetAttribute("PrismoraReady", true)
+remote:FireAllClients("WorldReady", loadedCount)
+
+print(string.format("PRISMORA_READY assets=%d spawn=%s", loadedCount, tostring(spawnPosition)))
+]]></string>
+      </Properties>
+    </Item>
+  </Item>
+  <Item class="StarterPlayer" referent="6">
+    <Properties>
+      <string name="Name">StarterPlayer</string>
+      <float name="CameraMaxZoomDistance">80</float>
+      <float name="CameraMinZoomDistance">8</float>
+    </Properties>
+    <Item class="StarterPlayerScripts" referent="7">
+      <Properties>
+        <string name="Name">StarterPlayerScripts</string>
+      </Properties>
+      <Item class="LocalScript" referent="8">
+        <Properties>
+          <string name="Name">PrismoraClient</string>
+          <string name="Source"><![CDATA[local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local StarterGui = game:GetService("StarterGui")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+local questRemote = ReplicatedStorage:WaitForChild("PrismoraEvent")
+local combatRemote = ReplicatedStorage:WaitForChild("PrismoraCombat")
+
+local old = playerGui:FindFirstChild("PrismoraUI")
+if old then old:Destroy() end
+
+local screen = Instance.new("ScreenGui")
+screen.Name = "PrismoraUI"
+screen.IgnoreGuiInset = false
+screen.ResetOnSpawn = false
+screen.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+screen.Parent = playerGui
+
+task.spawn(function()
+	for _ = 1, 10 do
+		if pcall(function()
+			StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList, false)
+			StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, false)
+		end) then break end
+		task.wait(0.25)
+	end
+end)
+
+local function round(parent, radius)
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, radius)
+	corner.Parent = parent
+end
+
+-- Crystals animate only on the local client and only when nearby. This removes
+-- hundreds of replicated CFrame updates per second from the server on mobile.
+task.spawn(function()
+	local crystalFolder = workspace:WaitForChild("PrismoraCrystals", 20)
+	while crystalFolder and crystalFolder.Parent do
+		local character = player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		local now = os.clock()
+		if root then
+			for _, crystal in crystalFolder:GetChildren() do
+				if crystal:IsA("BasePart") then
+					local base = crystal:GetAttribute("PrismoraBaseCFrame")
+					local phase = crystal:GetAttribute("PrismoraAnimationPhase") or 0
+					if typeof(base) == "CFrame" and (crystal.Position - root.Position).Magnitude <= 150 then
+						local t = now + phase
+						crystal.CFrame = base * CFrame.new(0, math.sin(t * 1.7) * 0.35, 0) * CFrame.Angles(0, t * 0.55, 0)
+					end
+				end
+			end
+		end
+		task.wait(0.1)
+	end
+end)
+
+local function stroke(parent, color, transparency, thickness)
+	local outline = Instance.new("UIStroke")
+	outline.Color = color
+	outline.Transparency = transparency
+	outline.Thickness = thickness
+	outline.Parent = parent
+end
+
+local header = Instance.new("Frame")
+header.Name = "Header"
+header.AnchorPoint = Vector2.new(0.5, 0)
+header.Position = UDim2.new(0.5, 0, 0, 10)
+header.Size = UDim2.fromOffset(520, 58)
+header.BackgroundColor3 = Color3.fromRGB(15, 20, 36)
+header.BackgroundTransparency = 0.08
+header.Parent = screen
+round(header, 22)
+stroke(header, Color3.fromRGB(70, 224, 255), 0.32, 2)
+
+local title = Instance.new("TextLabel")
+title.BackgroundTransparency = 1
+title.Position = UDim2.fromOffset(18, 8)
+title.Size = UDim2.fromOffset(150, 42)
+title.Font = Enum.Font.GothamBlack
+title.Text = "PRISMORA"
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.TextScaled = true
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Parent = header
+
+local objective = Instance.new("TextLabel")
+objective.BackgroundTransparency = 1
+objective.Position = UDim2.fromOffset(180, 9)
+objective.Size = UDim2.new(1, -195, 0, 40)
+objective.Font = Enum.Font.GothamMedium
+objective.Text = "Prendi la Raggialama e attacca gli Spenti"
+objective.TextColor3 = Color3.fromRGB(127, 232, 196)
+objective.TextScaled = true
+objective.TextXAlignment = Enum.TextXAlignment.Left
+objective.Parent = header
+
+local heroMeter = Instance.new("Frame")
+heroMeter.Name = "HeroMeter"
+heroMeter.AnchorPoint = Vector2.new(0.5, 1)
+heroMeter.Position = UDim2.new(0.5, 0, 1, -22)
+heroMeter.Size = UDim2.fromOffset(310, 25)
+heroMeter.BackgroundColor3 = Color3.fromRGB(38, 42, 58)
+heroMeter.BackgroundTransparency = 0.08
+heroMeter.ClipsDescendants = true
+heroMeter.Parent = screen
+round(heroMeter, 14)
+stroke(heroMeter, Color3.fromRGB(255, 201, 74), 0.35, 1.5)
+
+local heroFill = Instance.new("Frame")
+heroFill.Name = "Fill"
+heroFill.Size = UDim2.fromScale(0, 1)
+heroFill.BackgroundColor3 = Color3.fromRGB(255, 201, 74)
+heroFill.BorderSizePixel = 0
+heroFill.Parent = heroMeter
+
+local heroText = Instance.new("TextLabel")
+heroText.Size = UDim2.fromScale(1, 1)
+heroText.BackgroundTransparency = 1
+heroText.Font = Enum.Font.GothamBlack
+heroText.Text = "CARICA SOLARIS  0%"
+heroText.TextColor3 = Color3.new(1, 1, 1)
+heroText.TextScaled = true
+heroText.ZIndex = 2
+heroText.Parent = heroMeter
+
+local statusToast = Instance.new("TextLabel")
+statusToast.Name = "StatusToast"
+statusToast.AnchorPoint = Vector2.new(0.5, 0.5)
+statusToast.Position = UDim2.fromScale(0.5, 0.2)
+statusToast.Size = UDim2.fromOffset(430, 58)
+statusToast.BackgroundColor3 = Color3.fromRGB(16, 20, 35)
+statusToast.BackgroundTransparency = 1
+statusToast.Font = Enum.Font.GothamBlack
+statusToast.Text = ""
+statusToast.TextColor3 = Color3.new(1, 1, 1)
+statusToast.TextScaled = true
+statusToast.TextTransparency = 1
+statusToast.ZIndex = 10
+statusToast.Parent = screen
+round(statusToast, 18)
+
+local function showToast(text, color)
+	statusToast.Text = text
+	statusToast.TextColor3 = color or Color3.new(1, 1, 1)
+	statusToast.BackgroundTransparency = 0.12
+	statusToast.TextTransparency = 0
+	statusToast.Size = UDim2.fromOffset(390, 50)
+	TweenService:Create(statusToast, TweenInfo.new(0.16, Enum.EasingStyle.Back), { Size = UDim2.fromOffset(460, 62) }):Play()
+	task.delay(1.25, function()
+		if statusToast.Parent then
+			TweenService:Create(statusToast, TweenInfo.new(0.3), {
+				BackgroundTransparency = 1,
+				TextTransparency = 1,
+			}):Play()
+		end
+	end)
+end
+
+local function makeActionButton(name, text, color, size, position, anchor)
+	local button = Instance.new("TextButton")
+	button.Name = name
+	button.AnchorPoint = anchor or Vector2.new(1, 1)
+	button.Position = position
+	button.Size = UDim2.fromOffset(size, size)
+	button.BackgroundColor3 = color
+	button.BackgroundTransparency = 0.06
+	button.AutoButtonColor = false
+	button.Font = Enum.Font.GothamBlack
+	button.Text = text
+	button.TextColor3 = Color3.new(1, 1, 1)
+	button.TextScaled = true
+	button.ZIndex = 5
+	button.Parent = screen
+	round(button, math.floor(size * 0.34))
+	stroke(button, Color3.new(1, 1, 1), 0.42, 2)
+
+	button.MouseButton1Down:Connect(function()
+		TweenService:Create(button, TweenInfo.new(0.06), { Size = UDim2.fromOffset(size * 0.92, size * 0.92) }):Play()
+	end)
+	button.MouseButton1Up:Connect(function()
+		TweenService:Create(button, TweenInfo.new(0.08, Enum.EasingStyle.Back), { Size = UDim2.fromOffset(size, size) }):Play()
+	end)
+	return button
+end
+
+local touch = UserInputService.TouchEnabled
+local attack = makeActionButton(
+	"Attack",
+	touch and "ATTACCA" or "LMB",
+	Color3.fromRGB(255, 95, 162),
+	touch and 96 or 70,
+	UDim2.new(1, -28, 1, touch and -136 or -35),
+	Vector2.new(1, 1)
+)
+local skill = makeActionButton(
+	"Skill",
+	touch and "POTERE" or "Q",
+	Color3.fromRGB(255, 201, 74),
+	touch and 76 or 58,
+	UDim2.new(1, touch and -142 or -110, 1, touch and -150 or -40),
+	Vector2.new(1, 1)
+)
+local dash = makeActionButton(
+	"Dash",
+	touch and "DASH" or "SHIFT",
+	Color3.fromRGB(70, 224, 255),
+	touch and 76 or 62,
+	UDim2.new(0, touch and 28 or 20, 1, touch and -190 or -30),
+	Vector2.new(0, 1)
+)
+local hero = makeActionButton(
+	"Hero",
+	touch and "HERO" or "E HERO",
+	Color3.fromRGB(115, 97, 76),
+	touch and 86 or 72,
+	UDim2.new(1, -38, 1, touch and -255 or -125),
+	Vector2.new(1, 1)
+)
+hero.Active = false
+hero.BackgroundTransparency = 0.4
+
+local weapon = makeActionButton(
+	"Weapon",
+	touch and "ARMA" or "F ARMA",
+	Color3.fromRGB(176, 118, 255),
+	touch and 68 or 58,
+	UDim2.new(0, touch and 116 or 96, 1, touch and -190 or -32),
+	Vector2.new(0, 1)
+)
+weapon.Visible = false
+
+local cooldowns = { Attack = 0, Skill = 0, Dash = 0 }
+local heroReady = false
+local weaponCooldown = 0.31
+local baseLabels = {
+	Attack = touch and "ATTACCA" or "LMB",
+	Skill = touch and "POTERE" or "Q",
+	Dash = touch and "DASH" or "SHIFT",
+}
+
+local function startCooldown(button, key, duration)
+	cooldowns[key] = os.clock() + duration
+	button.Active = false
+	task.spawn(function()
+		while button.Parent and cooldowns[key] > os.clock() do
+			button.Text = string.format("%.1f", cooldowns[key] - os.clock())
+			button.BackgroundTransparency = 0.38
+			task.wait(0.08)
+		end
+		if button.Parent then
+			button.Text = baseLabels[key]
+			button.BackgroundTransparency = 0.06
+			button.Active = true
+		end
+	end)
+end
+
+local function aimAssist(maxDistance, minDot)
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local folder = workspace:FindFirstChild("PrismoraEnemies")
+	if not root or not folder then return end
+
+	local bestRoot, bestScore
+	for _, enemy in folder:GetChildren() do
+		local enemyRoot = enemy:IsA("Model") and enemy.PrimaryPart
+		if enemyRoot and not enemy:GetAttribute("Dead") then
+			local flat = Vector3.new(enemyRoot.Position.X, root.Position.Y, enemyRoot.Position.Z) - root.Position
+			local distance = flat.Magnitude
+			if distance > 0 and distance <= maxDistance then
+				local dot = root.CFrame.LookVector:Dot(flat.Unit)
+				if dot >= minDot then
+					local score = distance - (dot * 8)
+					if not bestScore or score < bestScore then
+						bestRoot, bestScore = enemyRoot, score
+					end
+				end
+			end
+		end
+	end
+	if bestRoot then
+		root.CFrame = CFrame.lookAt(root.Position, Vector3.new(bestRoot.Position.X, root.Position.Y, bestRoot.Position.Z))
+	end
+end
+
+local function requestAttack()
+	if cooldowns.Attack > os.clock() then return end
+	-- A light assist also runs on PC. It only selects an enemy already in front
+	-- of the character, so mouse attacks feel responsive without auto-aiming
+	-- across the arena.
+	aimAssist(touch and 30 or 22, touch and 0.34 or 0.58)
+	startCooldown(attack, "Attack", weaponCooldown)
+	combatRemote:FireServer("Attack")
+end
+
+local function requestSkill()
+	if cooldowns.Skill > os.clock() then return end
+	aimAssist(38, 0.25)
+	startCooldown(skill, "Skill", 7)
+	combatRemote:FireServer("Skill")
+end
+
+local function requestDash()
+	if cooldowns.Dash > os.clock() then return end
+	startCooldown(dash, "Dash", 1.2)
+	combatRemote:FireServer("Dash")
+end
+
+local function requestHero()
+	if not heroReady then return end
+	heroReady = false
+	hero.Active = false
+	hero.BackgroundColor3 = Color3.fromRGB(115, 97, 76)
+	hero.BackgroundTransparency = 0.4
+	combatRemote:FireServer("SummonHero")
+end
+
+local function requestWeapon()
+	if not weapon.Visible then return end
+	combatRemote:FireServer("CycleWeapon")
+end
+
+attack.Activated:Connect(requestAttack)
+skill.Activated:Connect(requestSkill)
+dash.Activated:Connect(requestDash)
+hero.Activated:Connect(requestHero)
+weapon.Activated:Connect(requestWeapon)
+
+UserInputService.InputBegan:Connect(function(input, processed)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		-- Roblox Studio can mark a world click as processed by CoreGui. Mouse
+		-- attacks must still work unless the player is actually typing.
+		if UserInputService:GetFocusedTextBox() then return end
+		requestAttack()
+	elseif processed then
+		return
+	elseif input.KeyCode == Enum.KeyCode.Q or input.KeyCode == Enum.KeyCode.ButtonX then
+		requestSkill()
+	elseif input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.ButtonB then
+		requestDash()
+	elseif input.KeyCode == Enum.KeyCode.E or input.KeyCode == Enum.KeyCode.ButtonY then
+		requestHero()
+	elseif input.KeyCode == Enum.KeyCode.One then
+		combatRemote:FireServer("SelectWeapon", 1)
+	elseif input.KeyCode == Enum.KeyCode.Two then
+		combatRemote:FireServer("SelectWeapon", 2)
+	elseif input.KeyCode == Enum.KeyCode.F or input.KeyCode == Enum.KeyCode.DPadRight then
+		requestWeapon()
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input, processed)
+	if processed or not weapon.Visible then return end
+	if input.UserInputType == Enum.UserInputType.MouseWheel and math.abs(input.Position.Z) > 0 then
+		requestWeapon()
+	end
+end)
+
+-- PlayerMouse is kept as a PC fallback because some Studio/CoreGui layouts
+-- consume MouseButton1 before UserInputService reports it to the experience.
+-- The shared cooldown makes the two listeners safe: one physical click can
+-- only send one attack.
+player:GetMouse().Button1Down:Connect(function()
+	if not UserInputService:GetFocusedTextBox() then
+		requestAttack()
+	end
+end)
+
+local function pulseHeader(color)
+	local original = header.BackgroundColor3
+	header.BackgroundColor3 = color
+	TweenService:Create(header, TweenInfo.new(0.3), { BackgroundColor3 = original }):Play()
+end
+
+local lastMissFeedback = 0
+
+combatRemote.OnClientEvent:Connect(function(action, value, extra, detail)
+	if action == "WeaponEquipped" then
+		weaponCooldown = detail or weaponCooldown
+		objective.Text = touch and "ATTACCA • POTERE • DASH" or "LMB attacca • Q potere • SHIFT dash"
+		showToast(string.upper(value or "SCINTILLA") .. " EQUIPAGGIATA", Color3.fromRGB(255, 201, 74))
+	elseif action == "WeaponChanged" then
+		weaponCooldown = detail or weaponCooldown
+		showToast("ARMA " .. tostring(extra or 1) .. "/2 • " .. string.upper(value or "SCINTILLA"), Color3.fromRGB(176, 118, 255))
+	elseif action == "LoadoutUnlocked" then
+		weapon.Visible = true
+		objective.Text = touch and "NUOVA ARMA • PREMI ARMA" or "RAGGIALAMA SBLOCCATA • 1/2 O F"
+		showToast("LOADOUT 2 SBLOCCATO • " .. string.upper(value or "RAGGIALAMA"), Color3.fromRGB(255, 201, 74))
+	elseif action == "AttackFeedback" then
+		if extra and extra > 0 then
+			showToast(value == 3 and "COMBO! COLPO SPEZZAGUARDIA" or "COLPITO!", Color3.fromRGB(255, 233, 184))
+			pulseHeader(Color3.fromRGB(113, 82, 48))
+		elseif os.clock() - lastMissFeedback >= 0.9 then
+			lastMissFeedback = os.clock()
+			showToast("FENDENTE • AVVICINATI AL NEMICO", Color3.fromRGB(70, 224, 255))
+		end
+	elseif action == "HitImpact" then
+		local camera = workspace.CurrentCamera
+		if camera then
+			local original = camera.CFrame
+			camera.CFrame = original * CFrame.new((math.random() - 0.5) * 0.12, (math.random() - 0.5) * 0.09, 0)
+			TweenService:Create(camera, TweenInfo.new(0.09), { CFrame = original }):Play()
+		end
+	elseif action == "SkillFeedback" then
+		showToast("RIFRAZIONE!", Color3.fromRGB(255, 95, 162))
+	elseif action == "DashFeedback" then
+		pulseHeader(Color3.fromRGB(38, 104, 122))
+	elseif action == "DamageReceived" then
+		showToast(string.format("-%d  SCHIVA!", value), Color3.fromRGB(255, 122, 47))
+		pulseHeader(Color3.fromRGB(130, 55, 35))
+	elseif action == "PlayerDown" then
+		showToast("KO • RIENTRI SUBITO NELL'AZIONE", Color3.fromRGB(255, 122, 47))
+	elseif action == "ArmorBlocked" then
+		showToast("CORAZZA! DASH E COLPISCI DA DIETRO", Color3.fromRGB(255, 122, 47))
+	elseif action == "BossTelegraph" then
+		showToast("ONDA ARANCIONE • SALTA!", Color3.fromRGB(255, 122, 47))
+	elseif action == "Reward" then
+		showToast(string.format("+%d FRAMMENTI • %s SCONFITTO", value, string.upper(extra or "SPENTO")), Color3.fromRGB(127, 232, 196))
+	elseif action == "HeroCharge" then
+		local charge = math.clamp(value or 0, 0, 100)
+		TweenService:Create(heroFill, TweenInfo.new(0.18, Enum.EasingStyle.Quint), { Size = UDim2.fromScale(charge / 100, 1) }):Play()
+		heroText.Text = string.format("CARICA SOLARIS  %d%%", math.floor(charge))
+	elseif action == "HeroReady" then
+		heroReady = true
+		hero.Active = true
+		hero.BackgroundColor3 = Color3.fromRGB(255, 201, 74)
+		hero.BackgroundTransparency = 0.02
+		heroText.Text = touch and "SOLARIS PRONTO • PREMI HERO" or "SOLARIS PRONTO • PREMI E"
+		showToast("SOLARIS È PRONTO!", Color3.fromRGB(255, 201, 74))
+	elseif action == "HeroSummoned" then
+		title.Text = "SOLARIS"
+		objective.Text = string.upper(value or "UN HERO") .. " HA RISVEGLIATO SOLARIS"
+		showToast("RISVEGLIO COLOSSALE!", Color3.fromRGB(255, 240, 184))
+		task.delay(8, function()
+			if title.Parent then title.Text = "PRISMORA" end
+		end)
+	elseif action == "RunModifier" then
+		showToast("MODIFICATORE • " .. string.upper(value or "SCONOSCIUTO"), Color3.fromRGB(176, 118, 255))
+	elseif action == "RunPhase" then
+		title.Text = string.find(value or "", "CAPITALE", 1, true) and "PRISMORA" or "ONDATA"
+		objective.Text = value or "COMBATTI"
+		if extra and extra ~= "NESSUNO" then
+			showToast(string.upper(extra), Color3.fromRGB(176, 118, 255))
+		end
+	elseif action == "RunProgress" then
+		local stage = value or 1
+		local defeated = extra or 0
+		local total = detail or 0
+		local remaining = math.max(0, total - defeated)
+		if stage == 1 then
+			objective.Text = string.format("ONDATA 1 • RESTANO %d", remaining)
+		elseif stage == 2 then
+			objective.Text = string.format("ONDATA 2 • RESTANO %d", remaining)
+		else
+			objective.Text = "MONOLITE • COLPISCI E CARICA SOLARIS"
+		end
+	elseif action == "RunComplete" then
+		title.Text = "VITTORIA"
+		objective.Text = string.format("+%d FRAMMENTI A TUTTI • NUOVA RUN TRA 8s", extra or 3)
+		showToast(string.format("VITTORIA! +%d FRAMMENTI PER TUTTI", extra or 3), Color3.fromRGB(127, 232, 196))
+	end
+end)
+
+questRemote.OnClientEvent:Connect(function(action, value)
+	if action == "CrystalCollected" then
+		pulseHeader(Color3.fromRGB(87, 80, 133))
+	elseif action == "HeroUnlocked" then
+		title.Text = "RISVEGLIO"
+		objective.Text = "Ora affronta il Monolite e conquista frammenti"
+		showToast("RISVEGLIO PRISMATICO!", Color3.fromRGB(255, 95, 162))
+	end
+end)
+
+task.delay(0.8, function()
+	showToast(touch and "ATTACCA • POTERE • DASH" or "WASD • LMB ATTACCA • Q POTERE • SHIFT DASH", Color3.fromRGB(70, 224, 255))
+end)
+
+-- The first seconds deliberately frame the capital as a place, not as a wall
+-- beside the spawn. Movement remains available as soon as the camera settles.
+task.spawn(function()
+	local capitalCenter
+	for _ = 1, 80 do
+		capitalCenter = workspace:GetAttribute("PrismoraCapitalCenter")
+		if typeof(capitalCenter) == "Vector3" and workspace.CurrentCamera then break end
+		task.wait(0.1)
+	end
+	if typeof(capitalCenter) ~= "Vector3" or not workspace.CurrentCamera then return end
+	local camera = workspace.CurrentCamera
+	camera.CameraType = Enum.CameraType.Scriptable
+	camera.FieldOfView = 76
+	camera.CFrame = CFrame.lookAt(
+		capitalCenter + Vector3.new(0, 54, 112),
+		capitalCenter + Vector3.new(0, 22, 0)
+	)
+	task.wait(1.9)
+	local settle = CFrame.lookAt(
+		capitalCenter + Vector3.new(0, 27, 78),
+		capitalCenter + Vector3.new(0, 16, 0)
+	)
+	local tween = TweenService:Create(camera, TweenInfo.new(0.85, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+		CFrame = settle,
+		FieldOfView = 72,
+	})
+	tween:Play()
+	tween.Completed:Wait()
+	camera.CameraType = Enum.CameraType.Custom
+end)
+
+local function fitHud()
+	local camera = workspace.CurrentCamera
+	if not camera then return end
+	local width = camera.ViewportSize.X
+	if width < 700 then
+		header.Size = UDim2.fromOffset(math.max(310, width - 24), 54)
+		title.Size = UDim2.fromOffset(105, 38)
+		objective.Position = UDim2.fromOffset(128, 8)
+		objective.Size = UDim2.new(1, -140, 0, 38)
+		statusToast.Size = UDim2.fromOffset(math.max(290, width - 40), 52)
+	else
+		header.Size = UDim2.fromOffset(520, 58)
+		title.Size = UDim2.fromOffset(150, 42)
+		objective.Position = UDim2.fromOffset(180, 9)
+		objective.Size = UDim2.new(1, -195, 0, 40)
+	end
+end
+
+fitHud()
+if workspace.CurrentCamera then
+	workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(fitHud)
+end
+]]></string>
+        </Properties>
+      </Item>
+    </Item>
+  </Item>
+  <Item class="Workspace" referent="9">
+    <Properties>
+      <string name="Name">Workspace</string>
+      <float name="FallenPartsDestroyHeight">-500</float>
+      <float name="Gravity">196.2</float>
+      <bool name="NeedsPivotMigration">false</bool>
+      <bool name="StreamingEnabled">false</bool>
+    </Properties>
+  </Item>
+</roblox>

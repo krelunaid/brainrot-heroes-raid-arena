@@ -13,10 +13,9 @@ crystalFolder.Name = "PrismoraCrystals"
 crystalFolder.Parent = workspace
 
 local COLORS = {
-	Color3.fromRGB(108, 250, 255),
-	Color3.fromRGB(255, 112, 220),
-	Color3.fromRGB(176, 118, 255),
-	Color3.fromRGB(255, 207, 102),
+	Color3.fromRGB(255, 201, 74),
+	Color3.fromRGB(255, 218, 104),
+	Color3.fromRGB(255, 190, 58),
 }
 
 local function getCrystals(player)
@@ -79,24 +78,25 @@ local rayParams = RaycastParams.new()
 rayParams.FilterType = Enum.RaycastFilterType.Include
 rayParams.FilterDescendantsInstances = { world }
 
-local center = spawn.Position
+local capitalCenter = workspace:GetAttribute("PrismoraCapitalCenter") or spawn.Position
+local arenaCenter = workspace:GetAttribute("PrismoraArenaCenter") or (capitalCenter + Vector3.new(0, 0, -330))
 local ZONES = {
-	Vector3.new(0, 0, 0),
-	Vector3.new(155, 0, 4),
-	Vector3.new(-150, 0, -8),
-	Vector3.new(4, 0, -132),
-	Vector3.new(12, 0, 145),
+	capitalCenter + Vector3.new(-18, 0, 34),
+	capitalCenter + Vector3.new(18, 0, 34),
+	capitalCenter + Vector3.new(-44, 0, -34),
+	arenaCenter + Vector3.new(-52, 0, -52),
+	arenaCenter + Vector3.new(8, 0, 12),
+	arenaCenter + Vector3.new(58, 0, 58),
 }
 
--- Crystals now lead players through every district instead of clustering next
--- to the spawn. There are enough nearby for a quick first reward, while a full
--- Hero awakening requires real exploration of the larger world.
+-- Gold always means reward in the new empire. Crystals live in the dense
+-- capital ring and inside the expedition arena; none lead to empty islands.
 for index = 1, 30 do
 	local zone = ZONES[((index - 1) % #ZONES) + 1]
 	local localIndex = math.floor((index - 1) / #ZONES)
 	local angle = math.rad((localIndex * 61) + (((index - 1) % #ZONES) * 17))
-	local radius = 16 + ((localIndex % 3) * 9)
-	local zoneCenter = center + zone
+	local radius = 7 + ((localIndex % 3) * 6)
+	local zoneCenter = zone
 	local probe = zoneCenter + Vector3.new(math.cos(angle) * radius, 110, math.sin(angle) * radius)
 	local hit = workspace:Raycast(probe, Vector3.new(0, -150, 0), rayParams)
 	local position = hit and (hit.Position + Vector3.new(0, 2.3, 0)) or (zoneCenter + Vector3.new(math.cos(angle) * radius, 2.3, math.sin(angle) * radius))
@@ -117,11 +117,14 @@ for index = 1, 30 do
 	crystal:SetAttribute("Active", true)
 	crystal.Parent = crystalFolder
 
-	local light = Instance.new("PointLight")
-	light.Color = crystal.Color
-	light.Brightness = 0.65
-	light.Range = 12
-	light.Parent = crystal
+	if index <= 6 then
+		local light = Instance.new("PointLight")
+		light.Color = crystal.Color
+		light.Brightness = 0.55
+		light.Range = 8
+		light.Shadows = false
+		light.Parent = crystal
+	end
 
 	crystal.Touched:Connect(function(hitPart)
 		local character = hitPart:FindFirstAncestorOfClass("Model")
