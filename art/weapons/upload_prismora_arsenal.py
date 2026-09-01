@@ -10,6 +10,11 @@ ROOT = Path(__file__).resolve().parent
 OUTPUT = ROOT / "output"
 REPORT_PATH = OUTPUT / "Prismora_Arsenal_V2_upload.json"
 WEAPONS = ("Scintilla", "Pulsar", "Frantuma")
+EXISTING_ASSET_IDS = {
+    "Scintilla": 112976542024708,
+    "Pulsar": 72359682918429,
+    "Frantuma": 105007115249197,
+}
 
 
 async def upload_arsenal():
@@ -39,10 +44,10 @@ async def upload_arsenal():
                 raise FileNotFoundError(fbx_path)
             operation = await client.upload_asset_and_wait_for_done_async(
                 asset_type=AssetType.MODEL,
-                asset_name=f"Prismora {weapon_name} V2",
+                asset_name=f"Prismora {weapon_name} V3",
                 asset_description="Original Prismora Hero Rush weapon, modelled in Blender and optimized for mobile",
                 file_path=str(fbx_path),
-                asset_id=0,
+                asset_id=EXISTING_ASSET_IDS[weapon_name],
                 upload_request_timeout_seconds=45,
                 num_poll_status_tries=16,
                 poll_status_request_timeout_seconds=8,

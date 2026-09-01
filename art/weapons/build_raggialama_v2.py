@@ -129,13 +129,14 @@ def join_named(objects, name):
 
 
 def create_weapon():
-    obsidian = material("Obsidian forged metal", (0.018, 0.026, 0.045), 0.92, 0.19)
-    gunmetal = material("Layered gunmetal", (0.075, 0.10, 0.14), 0.88, 0.25)
-    silver = material("Prismatic edge", (0.48, 0.62, 0.72), 0.95, 0.15)
-    gold = material("Solar gold", (0.72, 0.36, 0.055), 0.86, 0.2)
-    grip = material("Deep violet grip", (0.10, 0.025, 0.16), 0.18, 0.42)
-    cyan = material("Prism cyan", (0.005, 0.24, 0.46), 0.25, 0.17, (0.01, 0.58, 1.0), 3.2)
-    magenta = material("Prism magenta", (0.42, 0.008, 0.20), 0.2, 0.2, (1.0, 0.015, 0.34), 2.7)
+    obsidian = material("Obsidian forged metal", (0.004, 0.007, 0.014), 0.97, 0.12)
+    gunmetal = material("Layered gunmetal", (0.022, 0.034, 0.055), 0.94, 0.17)
+    silver = material("Prismatic edge", (0.26, 0.38, 0.48), 0.98, 0.08)
+    gold = material("Solar gold", (0.42, 0.18, 0.022), 0.91, 0.13)
+    grip = material("Deep violet grip", (0.034, 0.006, 0.052), 0.22, 0.34)
+    cyan = material("Prism cyan", (0.001, 0.18, 0.34), 0.28, 0.10, (0.0, 0.72, 1.0), 4.8)
+    magenta = material("Prism magenta", (0.28, 0.002, 0.10), 0.24, 0.11, (1.0, 0.0, 0.28), 4.2)
+    emerald = material("Prism emerald", (0.002, 0.22, 0.08), 0.22, 0.10, (0.0, 1.0, 0.24), 4.6)
 
     body = []
     glow = []
@@ -194,7 +195,7 @@ def create_weapon():
     # Runes punctuate the channel without relying on a noisy texture.
     for index, y in enumerate((1.48, 2.24, 3.02, 3.80, 4.54)):
         rune_points = [(0.0, y + 0.18), (0.18, y), (0.0, y - 0.18), (-0.18, y)]
-        rune_mat = cyan if index % 2 == 0 else magenta
+        rune_mat = (cyan, emerald, magenta)[index % 3]
         for z in (-0.36, 0.36):
             glow.append(extruded_polygon("Prism blade rune", rune_points, 0.045, rune_mat, z=z, bevel=0.02))
 
@@ -206,7 +207,7 @@ def create_weapon():
     guard_edge_right = [(0.58, 0.54), (1.65, 0.38), (2.02, 0.15), (1.62, 0.27), (1.12, 0.02)]
     body.append(extruded_polygon("Right gold guard edge", guard_edge_right, 0.72, gold, bevel=0.06))
     body.append(extruded_polygon("Left gold guard edge", [(-x, y) for x, y in guard_edge_right], 0.72, gold, bevel=0.06))
-    glow.append(cylinder("Guard prism core", (0.0, 0.30, 0.0), 0.42, 0.76, cyan, vertices=20, rotation=(0.0, 0.0, 0.0), bevel=0.05))
+    glow.append(cylinder("Guard prism core", (0.0, 0.30, 0.0), 0.42, 0.76, emerald, vertices=24, rotation=(0.0, 0.0, 0.0), bevel=0.05))
 
     # Grip and pommel use enough real geometry to hold up in close screenshots.
     body.append(cylinder("Tang", (0.0, -1.12, 0.0), 0.27, 2.65, obsidian, vertices=16))
@@ -226,6 +227,20 @@ def create_weapon():
             x = side * (0.88 - index * 0.10)
             spike = [(x, y - 0.18), (x + side * 0.52, y), (x, y + 0.18)]
             body.append(extruded_polygon("Blade silhouette spike", spike, 0.30, gunmetal, bevel=0.04))
+
+    # Raised spine, engraved teeth and a secondary reactor make the close-up
+    # silhouette feel like a premium forged weapon instead of a flat panel.
+    spine = [(-0.18, 0.82), (-0.25, 1.48), (-0.20, 5.10), (0.0, 5.72),
+             (0.20, 5.10), (0.25, 1.48), (0.18, 0.82)]
+    for z in (-0.40, 0.40):
+        body.append(extruded_polygon("Raggialama raised spine", spine, 0.08, gunmetal, z=z, bevel=0.035))
+    for side in (-1, 1):
+        for index, y in enumerate((1.34, 1.96, 2.58, 3.20, 3.82, 4.44)):
+            x = side * (0.66 - index * 0.035)
+            tooth = [(x, y - 0.15), (x + side * 0.32, y), (x, y + 0.16)]
+            body.append(extruded_polygon("Raggialama serrated tooth", tooth, 0.24, silver if index % 2 == 0 else gold, bevel=0.035))
+    for z in (-0.43, 0.43):
+        glow.append(cylinder("Raggialama secondary reactor", (0.0, 0.94, z), 0.20, 0.07, emerald, vertices=20, rotation=(0.0, 0.0, 0.0), bevel=0.025))
 
     body_obj = join_named(body, "RaggialamaV2_Body")
     glow_obj = join_named(glow, "RaggialamaV2_Energy")
@@ -312,7 +327,7 @@ def setup_render(objects):
     scene.world = world
     world.use_nodes = True
     world.node_tree.nodes["Background"].inputs["Color"].default_value = (0.004, 0.007, 0.018, 1.0)
-    world.node_tree.nodes["Background"].inputs["Strength"].default_value = 0.15
+    world.node_tree.nodes["Background"].inputs["Strength"].default_value = 0.28
 
     bpy.ops.object.camera_add(location=(11.2, -3.2, 12.4))
     camera = bpy.context.object
@@ -323,9 +338,9 @@ def setup_render(objects):
     scene.camera = camera
 
     for name, location, energy, color, size in (
-        ("Cool key", (5.0, 0.5, 7.5), 1250, (0.30, 0.78, 1.0), 4.0),
-        ("Warm rim", (-5.5, 3.0, 5.5), 1050, (1.0, 0.12, 0.42), 3.2),
-        ("Gold fill", (0.0, -3.5, 3.0), 700, (1.0, 0.55, 0.14), 2.8),
+        ("Neutral key", (5.0, 0.5, 7.5), 1160, (0.78, 0.86, 1.0), 4.0),
+        ("Emerald rim", (-5.5, 3.0, 5.5), 560, (0.05, 1.0, 0.30), 3.2),
+        ("Magenta fill", (0.0, -3.5, 3.0), 320, (1.0, 0.04, 0.30), 2.8),
     ):
         light_data = bpy.data.lights.new(name, "AREA")
         light_data.energy = energy
