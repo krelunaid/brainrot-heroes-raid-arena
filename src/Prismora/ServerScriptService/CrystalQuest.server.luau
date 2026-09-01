@@ -119,7 +119,7 @@ for index = 1, 30 do
 
 	local light = Instance.new("PointLight")
 	light.Color = crystal.Color
-	light.Brightness = 1.2
+	light.Brightness = 0.65
 	light.Range = 12
 	light.Parent = crystal
 

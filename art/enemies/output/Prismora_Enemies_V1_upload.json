@@ -1,0 +1,43 @@
+{
+  "account": "Mrdrew",
+  "creator_user_id": 9614239714,
+  "ok": true,
+  "enemies": [
+    {
+      "name": "Scheggino",
+      "ok": true,
+      "asset_id": 102318791792375,
+      "revision_id": 1
+    },
+    {
+      "name": "Rapido",
+      "ok": true,
+      "asset_id": 84606757772760,
+      "revision_id": 1
+    },
+    {
+      "name": "Gonfio",
+      "ok": true,
+      "asset_id": 130104923205588,
+      "revision_id": 1
+    },
+    {
+      "name": "Tessitore",
+      "ok": true,
+      "asset_id": 115265017026928,
+      "revision_id": 1
+    },
+    {
+      "name": "Guscione",
+      "ok": true,
+      "asset_id": 112641211249559,
+      "revision_id": 1
+    },
+    {
+      "name": "Monolite",
+      "ok": true,
+      "asset_id": 77520949932532,
+      "revision_id": 1
+    }
+  ]
+}

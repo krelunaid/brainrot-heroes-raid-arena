@@ -41,6 +41,34 @@ local ENEMY_DATA = {
 	Monolite = { health = 650, speed = 2.2, damage = 18, range = 18, reward = 8, size = 12, color = Color3.fromRGB(74, 70, 88) },
 }
 
+local ENEMY_ASSET_IDS = {
+	Scheggino = 102318791792375,
+	Rapido = 84606757772760,
+	Gonfio = 130104923205588,
+	Tessitore = 115265017026928,
+	Guscione = 112641211249559,
+	GuscioneElite = 112641211249559,
+	Monolite = 77520949932532,
+}
+local ENEMY_DISPLAY_HEIGHT = {
+	Scheggino = 4.4,
+	Rapido = 3.5,
+	Gonfio = 6.1,
+	Tessitore = 3.8,
+	Guscione = 4.7,
+	GuscioneElite = 6.2,
+	Monolite = 15.8,
+}
+local ENEMY_GLOW_COLORS = {
+	Scheggino = Color3.fromRGB(48, 224, 255),
+	Rapido = Color3.fromRGB(80, 255, 192),
+	Gonfio = Color3.fromRGB(255, 62, 155),
+	Tessitore = Color3.fromRGB(92, 255, 154),
+	Guscione = Color3.fromRGB(184, 92, 255),
+	GuscioneElite = Color3.fromRGB(255, 90, 218),
+	Monolite = Color3.fromRGB(255, 91, 38),
+}
+
 local WEAPON_ORDER = { "Scintilla", "Pulsar", "Raggialama", "Frantuma" }
 local WEAPON_ASSET_IDS = {
 	Scintilla = 112976542024708,
@@ -57,7 +85,9 @@ local WEAPON_DISPLAY_LENGTH = {
 local WEAPON_GRIP_CFRAMES = {
 	Scintilla = CFrame.new(0, 0, -0.03),
 	Pulsar = CFrame.new(0, -0.06, -0.05),
-	Raggialama = CFrame.new(0, -0.04, -0.02) * CFrame.Angles(math.rad(-58), math.rad(-8), math.rad(-14)),
+	-- The grip sits in front of the palm while drawn; the blade then projects
+	-- forward/up instead of crossing the torso like a holstered accessory.
+	Raggialama = CFrame.new(0.12, -0.08, -0.38) * CFrame.Angles(math.rad(-82), math.rad(-10), math.rad(8)),
 	Frantuma = CFrame.new(0, -0.05, -0.02) * CFrame.Angles(math.rad(-64), 0, math.rad(-16)),
 }
 local WEAPON_GLOW_COLORS = {
@@ -76,7 +106,7 @@ local WEAPON_DATA = {
 local WEAPON_ARM_POSES = {
 	Scintilla = CFrame.Angles(math.rad(-32), math.rad(-8), math.rad(18)),
 	Pulsar = CFrame.Angles(math.rad(-68), math.rad(-5), math.rad(12)),
-	Raggialama = CFrame.Angles(math.rad(-48), math.rad(10), math.rad(24)),
+	Raggialama = CFrame.Angles(math.rad(-68), math.rad(10), math.rad(18)),
 	Frantuma = CFrame.Angles(math.rad(-42), math.rad(12), math.rad(28)),
 }
 
@@ -125,6 +155,104 @@ local function updateHealthDisplay(enemy)
 	end
 end
 
+local importedEnemyTemplates = {}
+local importedEnemyUnavailable = {}
+
+local function importedEnemyClone(kind)
+	local assetKind = kind == "GuscioneElite" and "Guscione" or kind
+	local assetId = ENEMY_ASSET_IDS[kind]
+	if not assetId or importedEnemyUnavailable[assetKind] then return nil end
+	local template = importedEnemyTemplates[assetKind]
+	if not template then
+		local ok, container = pcall(function()
+			return InsertService:LoadAsset(assetId)
+		end)
+		if not ok or not container then
+			importedEnemyUnavailable[assetKind] = true
+			warn(string.format("PRISMORA_ENEMY_ASSET_FAILED name=%s asset=%d error=%s", assetKind, assetId, tostring(container)))
+			return nil
+		end
+		for _, item in container:GetDescendants() do
+			if item:IsA("LuaSourceContainer") then item:Destroy() end
+		end
+		container.Name = assetKind .. "EnemyTemplate"
+		container.Parent = ServerStorage
+		importedEnemyTemplates[assetKind] = container
+		template = container
+		print(string.format("PRISMORA_ENEMY_ASSET_READY name=%s asset=%d", assetKind, assetId))
+	end
+	return template:Clone()
+end
+
+local function attachImportedEnemyVisual(model, root, kind)
+	local visual = importedEnemyClone(kind)
+	if not visual then return false end
+	local marker = visual:FindFirstChild("EnemyRootMarker", true)
+	if not marker or not marker:IsA("BasePart") then
+		marker = visual:FindFirstChildWhichIsA("BasePart", true)
+	end
+	if not marker then
+		visual:Destroy()
+		return false
+	end
+
+	visual.Name = "EnemyVisual"
+	visual.Parent = model
+	visual.PrimaryPart = marker
+	local _, initialSize = visual:GetBoundingBox()
+	if initialSize.Y > 0.01 then
+		visual:ScaleTo(visual:GetScale() * ((ENEMY_DISPLAY_HEIGHT[kind] or 4.5) / initialSize.Y))
+	end
+	visual:PivotTo(root.CFrame)
+
+	local energyPart
+	for _, item in visual:GetDescendants() do
+		if item:IsA("BasePart") then
+			item.Anchored = false
+			item.CanCollide = false
+			item.CanTouch = false
+			item.CanQuery = false
+			item.Massless = true
+			if item.Name == "EnemyRootMarker" then
+				item.Transparency = 1
+				item.CastShadow = false
+			elseif string.find(item.Name, "Energy") then
+				energyPart = item
+				item.Material = Enum.Material.Neon
+				item.CastShadow = false
+			end
+			local weld = Instance.new("WeldConstraint")
+			weld.Part0 = root
+			weld.Part1 = item
+			weld.Parent = item
+		end
+	end
+
+	local glowColor = ENEMY_GLOW_COLORS[kind] or Color3.fromRGB(70, 224, 255)
+	if energyPart then
+		local light = Instance.new("PointLight")
+		light.Name = "EnemyCoreLight"
+		light.Color = glowColor
+		light.Brightness = kind == "Monolite" and 4.5 or 2.2
+		light.Range = kind == "Monolite" and 24 or 8
+		light.Shadows = false
+		light.Parent = energyPart
+		TweenService:Create(light, TweenInfo.new(0.72, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+			Brightness = kind == "Monolite" and 7 or 3.8,
+		}):Play()
+	end
+	local silhouette = Instance.new("Highlight")
+	silhouette.Name = "EnemySilhouette"
+	silhouette.Adornee = visual
+	silhouette.DepthMode = Enum.HighlightDepthMode.Occluded
+	silhouette.FillColor = glowColor
+	silhouette.FillTransparency = kind == "GuscioneElite" and 0.86 or 0.93
+	silhouette.OutlineColor = glowColor
+	silhouette.OutlineTransparency = kind == "Monolite" and 0.16 or 0.36
+	silhouette.Parent = visual
+	return true
+end
+
 local function createEnemy(kind, position)
 	local data = ENEMY_DATA[kind]
 	local healthMultiplier = activeModifier == "CORAZZA PRISMATICA" and 1.3 or 1
@@ -138,6 +266,8 @@ local function createEnemy(kind, position)
 	model:SetAttribute("MoveSpeed", data.speed * speedMultiplier)
 	model:SetAttribute("Dead", false)
 	model:SetAttribute("SpawnPosition", position)
+	model:SetAttribute("GroundY", position.Y)
+	model:SetAttribute("MotionSeed", math.random() * math.pi * 2)
 	model:SetAttribute("NextAttack", 0)
 	model.Parent = enemies
 
@@ -149,34 +279,18 @@ local function createEnemy(kind, position)
 		Enum.Material.Slate,
 		kind == "Monolite" and Enum.PartType.Block or Enum.PartType.Ball
 	)
-	root.CFrame = CFrame.new(position) * CFrame.Angles(0, math.rad(45), math.rad(kind == "Scheggino" and 45 or 0))
+	root.CFrame = CFrame.new(position) * CFrame.Angles(0, math.rad(45), 0)
 	model.PrimaryPart = root
+	if kind == "Monolite" then root.Size = Vector3.new(9, 13, 7) end
+	local importedVisual = attachImportedEnemyVisual(model, root, kind)
+	root.Transparency = importedVisual and 1 or 0
+	root.CastShadow = not importedVisual
 
-	local coreSize = kind == "Monolite" and Vector3.new(1.2, 5.4, 0.8) or Vector3.new(data.size * 0.35, data.size * 0.35, data.size * 0.35)
-	local core = makePart(model, "WeakCore", coreSize, Color3.fromRGB(255, 122, 47), Enum.Material.Neon, kind == "Monolite" and Enum.PartType.Block or Enum.PartType.Ball)
-	core.CFrame = root.CFrame * CFrame.new(0, 0, -(data.size * 0.52))
-
-	if data.armored then
-		local shell = makePart(model, "FrontShell", Vector3.new(5.8, 4.2, 1.2), Color3.fromRGB(107, 100, 120), Enum.Material.Slate)
-		shell.CFrame = root.CFrame * CFrame.new(0, 0, -2.4)
-	elseif kind == "Rapido" then
-		for side = -1, 1, 2 do
-			local fin = makePart(model, "SpeedFin", Vector3.new(0.35, 1.2, 2.8), Color3.fromRGB(70, 224, 255), Enum.Material.Neon)
-			fin.CFrame = root.CFrame * CFrame.new(side * 1.2, 0.3, 0.7) * CFrame.Angles(0, math.rad(side * 20), 0)
-		end
-	elseif kind == "Tessitore" then
-		for index = 1, 4 do
-			local leg = makePart(model, "WebLeg", Vector3.new(0.28, 0.28, 3.2), Color3.fromRGB(127, 232, 196), Enum.Material.Neon)
-			local angle = math.rad((index - 1) * 90 + 45)
-			leg.CFrame = root.CFrame * CFrame.new(math.cos(angle) * 1.7, -0.7, math.sin(angle) * 1.7) * CFrame.Angles(0, -angle, math.rad(18))
-		end
-	elseif kind == "Monolite" then
-		root.Size = Vector3.new(9, 13, 7)
-		for index = 1, 3 do
-			local band = makePart(model, "PrismBand" .. index, Vector3.new(10.4, 0.35, 8.4), Color3.fromRGB(255, 95, 162), Enum.Material.Neon)
-			band.Transparency = 0.12
-			band.CFrame = root.CFrame * CFrame.new(0, (index - 2) * 3.4, 0)
-		end
+	-- The primitive fallback exists only if Roblox temporarily refuses an asset.
+	if not importedVisual then
+		local coreSize = kind == "Monolite" and Vector3.new(1.2, 5.4, 0.8) or Vector3.new(data.size * 0.35, data.size * 0.35, data.size * 0.35)
+		local core = makePart(model, "WeakCore", coreSize, Color3.fromRGB(255, 122, 47), Enum.Material.Neon, kind == "Monolite" and Enum.PartType.Block or Enum.PartType.Ball)
+		core.CFrame = root.CFrame * CFrame.new(0, 0, -(data.size * 0.52))
 	end
 
 	local billboard = Instance.new("BillboardGui")
@@ -832,8 +946,7 @@ local function balancedTarget(enemy, maxDistance)
 		local character = candidate.Character
 		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 		local root = character and character:FindFirstChild("HumanoidRootPart")
-		local state = playerState[candidate]
-		if humanoid and humanoid.Health > 0 and root and (not state or os.clock() >= (state.protectedUntil or 0)) then
+		if humanoid and humanoid.Health > 0 and root then
 			local distance = (root.Position - enemy.PrimaryPart.Position).Magnitude
 			if distance <= maxDistance then
 				local score = distance + ((loads[candidate.UserId] or 0) * 14)
@@ -869,6 +982,33 @@ local function clampToCombatFloor(position)
 		position.Y,
 		math.clamp(position.Z, combatCenter.Z - combatHalfSizeZ, combatCenter.Z + combatHalfSizeZ)
 	)
+end
+
+local groundRayParams = RaycastParams.new()
+groundRayParams.FilterType = Enum.RaycastFilterType.Exclude
+groundRayParams.FilterDescendantsInstances = { enemies }
+groundRayParams.IgnoreWater = false
+
+local function groundedPursuitPosition(enemy, candidate)
+	-- Combat used to clamp every enemy to the original 96x96 arena. Once the
+	-- capital grew, a player standing just beyond its gate became unreachable.
+	-- Probe the actual world instead so enemies can leave the arena, cross gates
+	-- and follow bridge decks while never stepping onto empty sky.
+	local current = enemy.PrimaryPart.Position
+	local origin = Vector3.new(candidate.X, current.Y + 8, candidate.Z)
+	local result = workspace:Raycast(origin, Vector3.new(0, -32, 0), groundRayParams)
+	if not result or result.Normal.Y < 0.42 then
+		return current, false
+	end
+
+	local halfHeight = enemy.PrimaryPart.Size.Y * 0.5
+	local groundY = result.Position.Y + halfHeight + 0.12
+	-- Reject roofs or distant lower islands accidentally caught by the ray.
+	if math.abs(groundY - current.Y) > 7.5 then
+		return current, false
+	end
+	enemy:SetAttribute("GroundY", groundY)
+	return Vector3.new(candidate.X, groundY, candidate.Z), true
 end
 
 local function activeAttackers(userId, now)
@@ -929,10 +1069,33 @@ local function bossShockwave(enemy)
 	end)
 end
 
+local function enemyMotionCFrame(enemy, position, direction, now, moving)
+	local kind = enemy:GetAttribute("Kind")
+	local speed = enemy:GetAttribute("MoveSpeed") or 7
+	local phase = (now * speed * 0.92) + (enemy:GetAttribute("MotionSeed") or 0)
+	local bobScale = kind == "Monolite" and 0.10 or kind == "Rapido" and 0.28 or 0.15
+	local bob = math.sin(phase * 2) * bobScale * (moving and 1 or 0.32)
+	local groundY = enemy:GetAttribute("GroundY") or position.Y
+	local animatedPosition = Vector3.new(position.X, groundY + bob, position.Z)
+	local flatDirection = Vector3.new(direction.X, 0, direction.Z)
+	if flatDirection.Magnitude < 0.01 then flatDirection = Vector3.new(0, 0, -1) end
+	local rollScale = 5
+	if kind == "Gonfio" or kind == "Monolite" then
+		rollScale = 2.2
+	elseif kind == "Rapido" then
+		rollScale = 8
+	end
+	local pitch = kind == "Rapido" and math.rad(-7 + math.sin(phase) * 4) or math.rad(math.sin(phase) * 2.4)
+	local roll = math.rad(math.sin(phase) * rollScale) * (moving and 1 or 0.25)
+	return CFrame.lookAt(animatedPosition, animatedPosition + flatDirection.Unit) * CFrame.Angles(pitch, 0, roll)
+end
+
 local aiAccumulator = 0
 RunService.Heartbeat:Connect(function(deltaTime)
 	aiAccumulator += deltaTime
-	if aiAccumulator < 0.08 then return end
+	-- 30 Hz is fluid in third person and still leaves enough headroom on phones.
+	-- The previous 12.5 Hz cadence made detailed enemies visibly teleport.
+	if aiAccumulator < (1 / 30) then return end
 	local step = aiAccumulator
 	aiAccumulator = 0
 
@@ -948,7 +1111,9 @@ RunService.Heartbeat:Connect(function(deltaTime)
 				targetRoot = player and player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 			end
 			if not player or not targetRoot then
-				player, targetRoot = balancedTarget(enemy, enemy:GetAttribute("Kind") == "Monolite" and 70 or 95)
+				-- Any living player in this compact realm is a valid target. A short
+				-- radius made enemies freeze at their spawn when the capital layout grew.
+				player, targetRoot = balancedTarget(enemy, enemy:GetAttribute("Kind") == "Monolite" and 300 or 1000)
 				enemy:SetAttribute("TargetUserId", player and player.UserId or 0)
 				enemy:SetAttribute("NextTargetUpdate", now + 2.5)
 			end
@@ -960,8 +1125,13 @@ RunService.Heartbeat:Connect(function(deltaTime)
 				if distance > data.range + 0.8 and distance > 0.1 then
 					local desired = delta.Unit + (separation * 1.35)
 					if desired.Magnitude > 0.1 then
-						local newPosition = clampToCombatFloor(position + (desired.Unit * (enemy:GetAttribute("MoveSpeed") or data.speed) * step))
-						enemy:PivotTo(CFrame.lookAt(newPosition, newPosition + desired.Unit))
+						local candidate = position + (desired.Unit * (enemy:GetAttribute("MoveSpeed") or data.speed) * step)
+						local newPosition, canAdvance = groundedPursuitPosition(enemy, candidate)
+						if canAdvance then
+							enemy:PivotTo(enemyMotionCFrame(enemy, newPosition, desired.Unit, now, true))
+						else
+							enemy:PivotTo(enemyMotionCFrame(enemy, position, desired.Unit, now, false))
+						end
 					end
 				elseif now >= (enemy:GetAttribute("NextAttack") or 0) then
 					local maxAttackers = math.clamp(math.ceil(#Players:GetPlayers() * 0.75), 1, 4)
@@ -974,7 +1144,7 @@ RunService.Heartbeat:Connect(function(deltaTime)
 						local humanoid = targetRoot.Parent and targetRoot.Parent:FindFirstChildOfClass("Humanoid")
 							if humanoid then
 								local state = playerState[player]
-								if not state or now >= (state.nextDamage or 0) then
+								if (not state or now >= (state.protectedUntil or 0)) and (not state or now >= (state.nextDamage or 0)) then
 									if state then
 										state.nextDamage = now + 0.65
 										state.lastDamage = now
@@ -989,10 +1159,30 @@ RunService.Heartbeat:Connect(function(deltaTime)
 					if tangent.Magnitude > 0.1 then
 						local orbitSign = enemy:GetAttribute("OrbitSign") or 1
 						local desired = (tangent.Unit * orbitSign) + (separation * 1.7)
-						local newPosition = clampToCombatFloor(position + (desired.Unit * (enemy:GetAttribute("MoveSpeed") or data.speed) * 0.55 * step))
-						enemy:PivotTo(CFrame.lookAt(newPosition, flatTarget))
+						local candidate = position + (desired.Unit * (enemy:GetAttribute("MoveSpeed") or data.speed) * 0.55 * step)
+						local newPosition, canAdvance = groundedPursuitPosition(enemy, candidate)
+						if canAdvance then
+							enemy:PivotTo(enemyMotionCFrame(enemy, newPosition, flatTarget - newPosition, now, true))
+						end
 					end
 					end
+				else
+					enemy:PivotTo(enemyMotionCFrame(enemy, position, flatTarget - position, now, false))
+				end
+			else
+				-- Never display a lifeless row of enemies while a character is loading.
+				-- They patrol the arena and immediately switch to pursuit on acquisition.
+				local seed = enemy:GetAttribute("MotionSeed") or 0
+				local patrolRadius = enemy:GetAttribute("Kind") == "Monolite" and 18 or 26
+				local patrolTarget = combatCenter + Vector3.new(
+					math.cos((now * 0.34) + seed) * patrolRadius,
+					0,
+					math.sin((now * 0.34) + seed) * patrolRadius
+				)
+				local patrolDelta = Vector3.new(patrolTarget.X - position.X, 0, patrolTarget.Z - position.Z)
+				if patrolDelta.Magnitude > 1 then
+					local newPosition = clampToCombatFloor(position + patrolDelta.Unit * (enemy:GetAttribute("MoveSpeed") or data.speed) * 0.45 * step)
+					enemy:PivotTo(enemyMotionCFrame(enemy, newPosition, patrolDelta.Unit, now, true))
 				end
 			end
 		end
@@ -1000,9 +1190,9 @@ RunService.Heartbeat:Connect(function(deltaTime)
 end)
 
 local function setupPlayer(player)
-	playerState[player] = { attack = 0, skill = 0, dash = 0, cycle = 0, combo = 0, heroCharge = 0, heroActive = false, weaponIndex = 3, protectedUntil = os.clock() + 7, nextDamage = 0, lastDamage = 0 }
+	playerState[player] = { attack = 0, skill = 0, dash = 0, cycle = 0, combo = 0, heroCharge = 0, heroActive = false, weaponIndex = 3, protectedUntil = os.clock() + 4, nextDamage = 0, lastDamage = 0 }
 	local function configureCharacter(character)
-		if playerState[player] then playerState[player].protectedUntil = os.clock() + 7 end
+		if playerState[player] then playerState[player].protectedUntil = os.clock() + 4 end
 		local humanoid = character:WaitForChild("Humanoid")
 		humanoid.BreakJointsOnDeath = false
 		humanoid.MaxHealth = 140

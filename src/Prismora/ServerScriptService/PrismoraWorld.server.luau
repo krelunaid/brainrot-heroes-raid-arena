@@ -20,10 +20,10 @@ local WORLD_EDGE_LIMIT = 390
 -- landmasses turn it into an explorable archipelago without making the castle,
 -- trees and cottage comically large compared with the player.
 local DISTRICTS = {
-	{ name = "Sunreach", offset = Vector3.new(155, -3, 4), scale = 1.22, rotation = 14, color = Color3.fromRGB(255, 199, 92) },
-	{ name = "MoonGarden", offset = Vector3.new(-150, -4, -8), scale = 1.18, rotation = -18, color = Color3.fromRGB(184, 119, 255) },
-	{ name = "Skyport", offset = Vector3.new(4, -5, -132), scale = 1.10, rotation = 176, color = Color3.fromRGB(95, 224, 255) },
-	{ name = "HeroArena", offset = Vector3.new(12, -3, 145), scale = 1.30, rotation = -8, color = Color3.fromRGB(255, 103, 190) },
+	{ name = "Sunreach", displayName = "REGNO SOLARE", purpose = "FORGIA E BOSS", offset = Vector3.new(155, -3, 4), scale = 1.22, rotation = 14, color = Color3.fromRGB(255, 199, 92) },
+	{ name = "MoonGarden", displayName = "GIARDINO LUNARE", purpose = "EROI E MISTERI", offset = Vector3.new(-150, -4, -8), scale = 1.18, rotation = -18, color = Color3.fromRGB(184, 119, 255) },
+	{ name = "Skyport", displayName = "PORTO CELESTE", purpose = "SHUTTLE E CORSE", offset = Vector3.new(4, -5, -132), scale = 1.10, rotation = 176, color = Color3.fromRGB(95, 224, 255) },
+	{ name = "HeroArena", displayName = "ARENA DEGLI EROI", purpose = "ONDATE E RAID", offset = Vector3.new(12, -3, 145), scale = 1.30, rotation = -8, color = Color3.fromRGB(255, 103, 190) },
 }
 
 local function addPostProcessing()
@@ -35,29 +35,37 @@ local function addPostProcessing()
 
 	local atmosphere = Instance.new("Atmosphere")
 	atmosphere.Name = "PrismoraAtmosphere"
-	atmosphere.Density = 0.28
-	atmosphere.Offset = 0.22
-	atmosphere.Color = Color3.fromRGB(200, 225, 255)
-	atmosphere.Decay = Color3.fromRGB(120, 145, 190)
-	atmosphere.Glare = 0.15
-	atmosphere.Haze = 1.8
+	Lighting.Brightness = 1.8
+	Lighting.ExposureCompensation = -0.34
+	Lighting.ClockTime = 16.15
+	Lighting.Ambient = Color3.fromRGB(82, 84, 105)
+	Lighting.OutdoorAmbient = Color3.fromRGB(128, 142, 166)
+	Lighting.EnvironmentDiffuseScale = 0.38
+	Lighting.EnvironmentSpecularScale = 0.58
+
+	atmosphere.Density = 0.18
+	atmosphere.Offset = 0.12
+	atmosphere.Color = Color3.fromRGB(210, 226, 247)
+	atmosphere.Decay = Color3.fromRGB(137, 153, 190)
+	atmosphere.Glare = 0.04
+	atmosphere.Haze = 0.72
 	atmosphere:SetAttribute("PrismoraEffect", true)
 	atmosphere.Parent = Lighting
 
 	local bloom = Instance.new("BloomEffect")
 	bloom.Name = "PrismoraBloom"
-	bloom.Intensity = 0.58
-	bloom.Size = 26
-	bloom.Threshold = 0.88
+	bloom.Intensity = 0.24
+	bloom.Size = 18
+	bloom.Threshold = 1.72
 	bloom:SetAttribute("PrismoraEffect", true)
 	bloom.Parent = Lighting
 
 	local color = Instance.new("ColorCorrectionEffect")
 	color.Name = "PrismoraColor"
-	color.Brightness = 0.01
-	color.Contrast = 0.06
-	color.Saturation = 0.12
-	color.TintColor = Color3.fromRGB(255, 252, 246)
+	color.Brightness = -0.035
+	color.Contrast = 0.13
+	color.Saturation = 0.07
+	color.TintColor = Color3.fromRGB(250, 249, 255)
 	color:SetAttribute("PrismoraEffect", true)
 	color.Parent = Lighting
 
@@ -286,16 +294,16 @@ local function createDistrictBeacon(parent, district, position)
 
 	local light = Instance.new("PointLight")
 	light.Color = district.color
-	light.Brightness = 2.2
-	light.Range = 34
+	light.Brightness = 0.85
+	light.Range = 19
 	light.Parent = beacon
 
 	local billboard = Instance.new("BillboardGui")
 	billboard.Name = "DistrictLabel"
 	billboard.Size = UDim2.fromOffset(150, 34)
 	billboard.StudsOffset = Vector3.new(0, 13, 0)
-	billboard.AlwaysOnTop = true
-	billboard.MaxDistance = 90
+	billboard.AlwaysOnTop = false
+	billboard.MaxDistance = 52
 	billboard.Parent = beacon
 
 	local label = Instance.new("TextLabel")
@@ -304,13 +312,107 @@ local function createDistrictBeacon(parent, district, position)
 	label.BorderSizePixel = 0
 	label.Size = UDim2.fromScale(1, 1)
 	label.Font = Enum.Font.GothamBlack
-	label.Text = string.upper(district.name)
+	label.Text = district.displayName or string.upper(district.name)
 	label.TextColor3 = Color3.new(1, 1, 1)
 	label.TextScaled = true
 	label.Parent = billboard
 
 	local corner = Instance.new("UICorner")
 	corner.CornerRadius = UDim.new(0, 16)
+	corner.Parent = label
+end
+
+local function createRealmGate(parent, capitalData, districtData, district)
+	local delta = Vector3.new(districtData.center.X - capitalData.center.X, 0, districtData.center.Z - capitalData.center.Z)
+	local direction = delta.Unit
+	local gatePosition = capitalData.center + direction * (math.min(capitalData.size.X, capitalData.size.Y) * 0.35)
+	local gateCFrame = CFrame.lookAt(gatePosition, gatePosition + direction)
+
+	for side = -1, 1, 2 do
+		local pillar = Instance.new("Part")
+		pillar.Name = district.name .. "GatePillar"
+		pillar.Anchored = true
+		pillar.CanCollide = true
+		pillar.Material = Enum.Material.Marble
+		pillar.Color = Color3.fromRGB(218, 221, 235)
+		pillar.Size = Vector3.new(2.6, 13, 2.6)
+		pillar.CFrame = gateCFrame * CFrame.new(side * 10.2, 6.5, 0)
+		pillar.Parent = parent
+
+		local rune = Instance.new("Part")
+		rune.Name = district.name .. "GateRune"
+		rune.Anchored = true
+		rune.CanCollide = false
+		rune.Material = Enum.Material.Neon
+		rune.Color = district.color
+		rune.Transparency = 0.22
+		rune.Size = Vector3.new(0.32, 9.2, 2.85)
+		rune.CFrame = gateCFrame * CFrame.new(side * 10.2, 6.6, -1.34)
+		rune.Parent = parent
+	end
+
+	local crown = Instance.new("Part")
+	crown.Name = district.name .. "GateCrown"
+	crown.Anchored = true
+	crown.CanCollide = false
+	crown.Material = Enum.Material.Marble
+	crown.Color = Color3.fromRGB(218, 221, 235)
+	crown.Size = Vector3.new(23, 2.4, 2.8)
+	crown.CFrame = gateCFrame * CFrame.new(0, 12.2, 0)
+	crown.Parent = parent
+
+	local sign = Instance.new("BillboardGui")
+	sign.Name = district.name .. "RealmSign"
+	sign.AlwaysOnTop = false
+	sign.MaxDistance = 46
+	sign.Size = UDim2.fromOffset(220, 50)
+	sign.StudsOffset = Vector3.new(0, 3.5, 0)
+	sign.Parent = crown
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.fromScale(1, 1)
+	label.BackgroundColor3 = Color3.fromRGB(14, 18, 34)
+	label.BackgroundTransparency = 0.08
+	label.BorderSizePixel = 0
+	label.Font = Enum.Font.GothamBlack
+	label.Text = string.format("%s\n%s", district.displayName, district.purpose)
+	label.TextColor3 = Color3.new(1, 1, 1)
+	label.TextScaled = true
+	label.Parent = sign
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 14)
+	corner.Parent = label
+end
+
+local function createCapitalIdentity(parent, capitalData)
+	local anchor = Instance.new("Part")
+	anchor.Name = "PrismoraCapitalIdentity"
+	anchor.Anchored = true
+	anchor.CanCollide = false
+	anchor.CanQuery = false
+	anchor.Transparency = 1
+	anchor.Size = Vector3.one
+	anchor.CFrame = CFrame.new(capitalData.center + Vector3.new(0, 12, 18))
+	anchor.Parent = parent
+
+	local title = Instance.new("BillboardGui")
+	title.Name = "CapitalTitle"
+	title.AlwaysOnTop = false
+	title.MaxDistance = 62
+	title.Size = UDim2.fromOffset(270, 58)
+	title.Parent = anchor
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.fromScale(1, 1)
+	label.BackgroundColor3 = Color3.fromRGB(12, 17, 34)
+	label.BackgroundTransparency = 0.12
+	label.BorderSizePixel = 0
+	label.Font = Enum.Font.GothamBlack
+	label.Text = "CAPITALE PRISMORA\nIL CUORE DELL'IMPERO"
+	label.TextColor3 = Color3.fromRGB(235, 255, 252)
+	label.TextScaled = true
+	label.Parent = title
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 18)
 	corner.Parent = label
 end
 
@@ -326,6 +428,7 @@ local function createArchipelago(world)
 	districtFolder.Parent = world
 
 	local centralData = createWalkSurface(world, centralIsland, "PrismaHub", Color3.fromRGB(118, 255, 235))
+	createCapitalIdentity(world, centralData)
 	workspace:SetAttribute("PrismoraSpawnPoint", centralData.center + Vector3.new(0, 3, 24))
 	workspace:SetAttribute("PrismoraCombatCenter", centralData.center + Vector3.new(0, 2, -28))
 	workspace:SetAttribute("PrismoraCombatHalfSizeX", math.max(32, (centralData.size.X * 0.5) - 8))
@@ -343,6 +446,7 @@ local function createArchipelago(world)
 
 		local districtData = createWalkSurface(districtFolder, island, district.name, district.color)
 		createBridge(districtFolder, centralData, districtData, district.color)
+		createRealmGate(districtFolder, centralData, districtData, district)
 		centralOpenings[sideToward(centralData.center, districtData.center)] = true
 		table.insert(districtPerimeters, {
 			data = districtData,
