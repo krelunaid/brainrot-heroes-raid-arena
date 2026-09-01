@@ -34,8 +34,10 @@
         <string name="Name">ActionGameplay</string>
         <token name="RunContext">0</token>
         <string name="Source"><![CDATA[local Players = game:GetService("Players")
+local InsertService = game:GetService("InsertService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local ServerStorage = game:GetService("ServerStorage")
 local TweenService = game:GetService("TweenService")
 
 Players.RespawnTime = 2
@@ -75,6 +77,9 @@ local ENEMY_DATA = {
 }
 
 local WEAPON_ORDER = { "Scintilla", "Pulsar", "Raggialama", "Frantuma" }
+local WEAPON_ASSET_IDS = {
+	Raggialama = 94748150816254,
+}
 local WEAPON_DATA = {
 	Scintilla = { damage = 19, finisher = 31, cooldown = 0.31, box = Vector3.new(9, 8, 10), offset = 5 },
 	Pulsar = { damage = 21, finisher = 32, cooldown = 0.48, box = Vector3.new(8, 8, 58), offset = 29 },
@@ -207,6 +212,101 @@ local function createEnemy(kind, position)
 	return model
 end
 
+local importedWeaponTemplates = {}
+local importedWeaponUnavailable = {}
+
+local function importedWeaponClone(weaponName)
+	local assetId = WEAPON_ASSET_IDS[weaponName]
+	if not assetId or importedWeaponUnavailable[weaponName] then return nil end
+	local template = importedWeaponTemplates[weaponName]
+	if not template then
+		local ok, container = pcall(function()
+			return InsertService:LoadAsset(assetId)
+		end)
+		if not ok or not container then
+			importedWeaponUnavailable[weaponName] = true
+			warn(string.format("PRISMORA_WEAPON_ASSET_FAILED name=%s asset=%d error=%s", weaponName, assetId, tostring(container)))
+			return nil
+		end
+		for _, item in container:GetDescendants() do
+			if item:IsA("LuaSourceContainer") then item:Destroy() end
+		end
+		container.Name = weaponName .. "MeshTemplate"
+		container.Parent = ServerStorage
+		importedWeaponTemplates[weaponName] = container
+		template = container
+		print(string.format("PRISMORA_WEAPON_ASSET_READY name=%s asset=%d", weaponName, assetId))
+	end
+	return template:Clone()
+end
+
+local function attachImportedWeapon(character, hand, weaponName)
+	local weapon = importedWeaponClone(weaponName)
+	if not weapon then return nil end
+	local primary = weapon:FindFirstChild("RaggialamaV2_Body", true)
+	if not primary or not primary:IsA("BasePart") then
+		primary = weapon:FindFirstChildWhichIsA("BasePart", true)
+	end
+	if not primary then
+		weapon:Destroy()
+		return nil
+	end
+
+	weapon.Name = "PrismoraWeapon"
+	weapon:SetAttribute("WeaponName", weaponName)
+	weapon.Parent = character
+	weapon.PrimaryPart = primary
+	local _, initialSize = weapon:GetBoundingBox()
+	local longest = math.max(initialSize.X, initialSize.Y, initialSize.Z)
+	if longest > 0.01 then
+		weapon:ScaleTo(weapon:GetScale() * (6.6 / longest))
+	end
+
+	for _, item in weapon:GetDescendants() do
+		if item:IsA("BasePart") then
+			item.Anchored = false
+			item.CanCollide = false
+			item.CanTouch = false
+			item.CanQuery = false
+			item.Massless = true
+			if item ~= primary then
+				local weld = Instance.new("WeldConstraint")
+				weld.Part0 = primary
+				weld.Part1 = item
+				weld.Parent = item
+			end
+		end
+	end
+
+	local grip = Instance.new("Motor6D")
+	grip.Name = "WeaponGrip"
+	grip.Part0 = hand
+	grip.Part1 = primary
+	grip.C0 = CFrame.new(0, -0.84, 0) * CFrame.Angles(0, 0, math.rad(180))
+	grip.C1 = CFrame.identity
+	grip.Parent = hand
+
+	local trailSource = weapon:FindFirstChild("RaggialamaV2_Energy", true) or primary
+	if trailSource:IsA("BasePart") then
+		local topAttachment = Instance.new("Attachment")
+		topAttachment.Position = Vector3.new(0, -trailSource.Size.Y * 0.46, 0)
+		topAttachment.Parent = trailSource
+		local bottomAttachment = Instance.new("Attachment")
+		bottomAttachment.Position = Vector3.new(0, trailSource.Size.Y * 0.46, 0)
+		bottomAttachment.Parent = trailSource
+		local trail = Instance.new("Trail")
+		trail.Name = "AttackTrail"
+		trail.Attachment0 = topAttachment
+		trail.Attachment1 = bottomAttachment
+		trail.Color = ColorSequence.new(Color3.fromRGB(70, 224, 255), Color3.fromRGB(255, 95, 162))
+		trail.Lifetime = 0.24
+		trail.LightEmission = 0.8
+		trail.Enabled = false
+		trail.Parent = trailSource
+	end
+	return weapon
+end
+
 local function attachWeapon(character, weaponName)
 	local previousGrip = character:FindFirstChild("WeaponGrip", true)
 	if previousGrip then
@@ -219,6 +319,9 @@ local function attachWeapon(character, weaponName)
 
 	local hand = character:FindFirstChild("RightHand") or character:FindFirstChild("Right Arm")
 	if not hand or not hand:IsA("BasePart") then
+		return
+	end
+	if attachImportedWeapon(character, hand, weaponName) then
 		return
 	end
 
