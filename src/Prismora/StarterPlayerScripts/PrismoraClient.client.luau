@@ -362,6 +362,8 @@ local function pulseHeader(color)
 	TweenService:Create(header, TweenInfo.new(0.3), { BackgroundColor3 = original }):Play()
 end
 
+local lastMissFeedback = 0
+
 combatRemote.OnClientEvent:Connect(function(action, value, extra, detail)
 	if action == "WeaponEquipped" then
 		weaponCooldown = detail or weaponCooldown
@@ -374,6 +376,9 @@ combatRemote.OnClientEvent:Connect(function(action, value, extra, detail)
 		if extra and extra > 0 then
 			showToast(value == 3 and "COMBO! COLPO SPEZZAGUARDIA" or "COLPITO!", Color3.fromRGB(255, 233, 184))
 			pulseHeader(Color3.fromRGB(113, 82, 48))
+		elseif os.clock() - lastMissFeedback >= 0.9 then
+			lastMissFeedback = os.clock()
+			showToast("FENDENTE • AVVICINATI AL NEMICO", Color3.fromRGB(70, 224, 255))
 		end
 	elseif action == "HitImpact" then
 		local camera = workspace.CurrentCamera

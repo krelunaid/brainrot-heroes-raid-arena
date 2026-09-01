@@ -302,6 +302,8 @@ local function attachImportedWeapon(character, hand, weaponName)
 		grip.C0 = CFrame.new(0, -0.84, 0) * CFrame.Angles(0, 0, math.rad(180))
 	end
 	grip.C1 = CFrame.identity
+	grip:SetAttribute("RestC0", grip.C0)
+	grip:SetAttribute("AttackSerial", 0)
 	grip.Parent = hand
 
 	local trailSource = weapon:FindFirstChild(weaponName .. "V2_Energy", true) or primary
@@ -568,16 +570,23 @@ local function flashWeapon(character, duration)
 	end
 	if grip and grip:IsA("Motor6D") and weapon then
 		local weaponName = weapon:GetAttribute("WeaponName")
+		local restC0 = grip:GetAttribute("RestC0")
+		if typeof(restC0) ~= "CFrame" then
+			restC0 = grip.C0
+			grip:SetAttribute("RestC0", restC0)
+		end
+		local attackSerial = (grip:GetAttribute("AttackSerial") or 0) + 1
+		grip:SetAttribute("AttackSerial", attackSerial)
 		local strike = weaponName == "Pulsar"
 			and CFrame.new(0, 0, 0.32)
 			or CFrame.Angles(math.rad(weaponName == "Frantuma" and -105 or -72), 0, math.rad(-32))
 		TweenService:Create(grip, TweenInfo.new(0.07, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-			Transform = strike,
+			C0 = restC0 * strike,
 		}):Play()
 		task.delay(0.075, function()
-			if grip.Parent then
+			if grip.Parent and grip:GetAttribute("AttackSerial") == attackSerial then
 				TweenService:Create(grip, TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-					Transform = CFrame.identity,
+					C0 = restC0,
 				}):Play()
 			end
 		end)
