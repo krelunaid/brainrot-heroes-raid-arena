@@ -7,9 +7,9 @@ from mathutils import Vector
 
 ROOT = Path(__file__).resolve().parent
 OUTPUT = ROOT / "output"
-BLEND_PATH = OUTPUT / "Prismora_Capital_V2.blend"
-FBX_PATH = OUTPUT / "Prismora_Capital_V2.fbx"
-RENDER_PATH = OUTPUT / "Prismora_Capital_V2.png"
+BLEND_PATH = OUTPUT / "Prismora_Capital_V3.blend"
+FBX_PATH = OUTPUT / "Prismora_Capital_V3.fbx"
+RENDER_PATH = OUTPUT / "Prismora_Capital_V3.png"
 
 
 def reset_scene():
@@ -202,6 +202,26 @@ def player_marker():
     blade["roblox_collision"] = False
 
 
+def capital_dressing():
+    # Layered foreground composition: the player enters a believable civic plaza,
+    # rather than looking at a collection of isolated primitives.
+    for side in (-1, 1):
+        for y in (-92, -78, -64, -50):
+            cylinder("Causeway_Bollard", (side * 10.2, y, 3.2), 0.72, 4.0, CREAM, 12, 0.14)
+            cylinder("Causeway_BollardCap", (side * 10.2, y, 5.35), 1.05, 0.42, GOLD, 12, 0.1)
+        cube("Garden_Wall", (side * 30, -47, 3.2), (28, 3.2, 5.0), CREAM, 0.55)
+        cube("Garden_WallGold", (side * 30, -47, 5.8), (29, 3.5, 0.55), GOLD, 0.16)
+        for xoff in (-10, 0, 10):
+            tree("Formal_Tree", (side * 30 + xoff, -42, 5.8), 0.5)
+    # A pair of readable guardian monuments frames the first vista.
+    for side, accent in ((-1, MAGENTA), (1, CYAN)):
+        cylinder("Guardian_Base", (side * 18, -38, 4.0), 4.2, 5.0, DARK_STONE, 10, 0.3)
+        hero_statue("Guardian", (side * 18, -38, 6.5), accent, -side * 0.18)
+    # Repeated gold inlays make the paving feel authored and guide the eye.
+    for y in range(-103, -18, 9):
+        cube("Causeway_Inlay", (0, y, 1.78), (17.5, 0.42, 0.16), GOLD, 0.06)
+
+
 def build_scene():
     # Main octagonal floating platform and layered rim.
     cylinder("Capital_Platform", (0, 0, -2.2), 70, 4.4, CREAM, 12, 0.45)
@@ -318,39 +338,42 @@ def point_camera(camera, target):
 
 
 def render_scene():
-    bpy.ops.object.camera_add(location=(62, -176, 58))
+    bpy.ops.object.camera_add(location=(0, -154, 16.5))
     camera = bpy.context.object
-    camera.data.lens = 44
-    point_camera(camera, (0, 0, 25))
+    camera.data.lens = 36
+    point_camera(camera, (0, 2, 23))
+    camera.data.dof.use_dof = True
+    camera.data.dof.focus_distance = 154
+    camera.data.dof.aperture_fstop = 7.0
     bpy.context.scene.camera = camera
     bpy.ops.object.light_add(type="AREA", location=(-60, -85, 120))
     key = bpy.context.object
-    key.data.energy = 1900
+    key.data.energy = 1150
     key.data.shape = "DISK"
     key.data.size = 72
     key.data.color = (1.0, 0.84, 0.66)
     point_camera(key, (0, 0, 15))
     bpy.ops.object.light_add(type="AREA", location=(75, -20, 55))
     fill = bpy.context.object
-    fill.data.energy = 1150
+    fill.data.energy = 620
     fill.data.size = 55
     fill.data.color = (0.45, 0.85, 1.0)
     point_camera(fill, (0, 0, 18))
     bpy.ops.object.light_add(type="SUN", location=(0, -40, 140), rotation=(math.radians(28), math.radians(-18), math.radians(-28)))
     sun = bpy.context.object
-    sun.data.energy = 3.2
+    sun.data.energy = 2.0
     sun.data.angle = math.radians(18)
     sun.data.color = (1.0, 0.82, 0.62)
     world = bpy.context.scene.world
     world.use_nodes = True
-    world.node_tree.nodes["Background"].inputs["Color"].default_value = (0.18, 0.48, 0.86, 1.0)
-    world.node_tree.nodes["Background"].inputs["Strength"].default_value = 0.9
+    world.node_tree.nodes["Background"].inputs["Color"].default_value = (0.055, 0.16, 0.34, 1.0)
+    world.node_tree.nodes["Background"].inputs["Strength"].default_value = 0.48
     scene = bpy.context.scene
     # CPU rendering avoids the Metal command-buffer crash seen in Eevee on
     # this Mac while preserving authored PBR materials and actual lights.
     scene.render.engine = "CYCLES"
     scene.cycles.device = "CPU"
-    scene.cycles.samples = 20
+    scene.cycles.samples = 32
     scene.cycles.use_denoising = True
     scene.render.resolution_x = 1280
     scene.render.resolution_y = 720
@@ -359,7 +382,7 @@ def render_scene():
     scene.render.filepath = str(RENDER_PATH)
     scene.render.film_transparent = False
     scene.view_settings.look = "AgX - Medium High Contrast"
-    scene.view_settings.exposure = 0.25
+    scene.view_settings.exposure = -0.35
     bpy.ops.render.render(write_still=True)
     bpy.data.objects.remove(camera, do_unlink=True)
     bpy.data.objects.remove(key, do_unlink=True)
@@ -387,12 +410,12 @@ def export_scene():
 OUTPUT.mkdir(parents=True, exist_ok=True)
 reset_scene()
 
-CREAM = material("CreamStone", (0.78, 0.68, 0.52), roughness=0.68)
-TILE = material("WarmTile", (0.64, 0.47, 0.29), roughness=0.52)
-STONE = material("PaleStone", (0.38, 0.45, 0.58), metallic=0.05, roughness=0.58)
+CREAM = material("CreamStone", (0.88, 0.79, 0.62), roughness=0.58)
+TILE = material("WarmTile", (0.53, 0.34, 0.17), roughness=0.48)
+STONE = material("PaleStone", (0.34, 0.43, 0.58), metallic=0.05, roughness=0.5)
 DARK_STONE = material("DarkStone", (0.085, 0.12, 0.20), metallic=0.18, roughness=0.42)
 ROCK = material("FloatingRock", (0.18, 0.14, 0.16), roughness=0.82)
-GOLD = material("ImperialGold", (0.83, 0.43, 0.055), metallic=0.8, roughness=0.22)
+GOLD = material("ImperialGold", (0.95, 0.56, 0.08), metallic=0.82, roughness=0.2)
 NAVY = material("ImperialNavy", (0.025, 0.07, 0.18), metallic=0.22, roughness=0.4)
 PLAYER_DARK = material("PlayerArmor", (0.025, 0.04, 0.07), metallic=0.62, roughness=0.28)
 PLAYER_SKIN = material("PlayerSkin", (0.58, 0.32, 0.19), roughness=0.65)
@@ -407,6 +430,12 @@ GOLD_GLOW = material("GoldEnergy", (1.0, 0.58, 0.04), metallic=0.12, roughness=0
 GLASS = material("PrismGlass", (0.06, 0.72, 0.95), metallic=0.05, roughness=0.08, emission=(0.04, 0.55, 1.0), emission_strength=2.8)
 
 build_scene()
+# The former spawn portal hid the skyline and made the capital feel like a
+# corridor. The arrival road now opens directly onto the central landmark.
+for obj in list(bpy.context.scene.objects):
+    if obj.name.startswith("Portal_Skyport"):
+        bpy.data.objects.remove(obj, do_unlink=True)
+capital_dressing()
 render_scene()
 join_by_material()
 export_scene()
