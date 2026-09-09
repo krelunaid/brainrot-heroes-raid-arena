@@ -3,24 +3,24 @@
     <Properties>
       <string name="Name">Lighting</string>
       <Color3 name="Ambient">
-        <R>0.294</R>
-        <G>0.306</G>
-        <B>0.361</B>
+        <R>0.275</R>
+        <G>0.294</G>
+        <B>0.373</B>
       </Color3>
-      <float name="Brightness">2.5</float>
-      <float name="ClockTime">14.2</float>
+      <float name="Brightness">2.1</float>
+      <float name="ClockTime">15.2</float>
       <Color3 name="ColorShift_Top">
         <R>0.02</R>
         <G>0.01</G>
         <B>0</B>
       </Color3>
-      <float name="EnvironmentDiffuseScale">0.45</float>
-      <float name="EnvironmentSpecularScale">0.7</float>
+      <float name="EnvironmentDiffuseScale">0.42</float>
+      <float name="EnvironmentSpecularScale">0.8</float>
       <bool name="GlobalShadows">true</bool>
       <Color3 name="OutdoorAmbient">
-        <R>0.49</R>
-        <G>0.502</G>
-        <B>0.569</B>
+        <R>0.431</R>
+        <G>0.451</G>
+        <B>0.529</B>
       </Color3>
       <token name="Technology">3</token>
     </Properties>
@@ -1863,38 +1863,42 @@ local function addPostProcessing()
 
 	local atmosphere = Instance.new("Atmosphere")
 	atmosphere.Name = "PrismoraAtmosphere"
-	Lighting.Brightness = 2.5
-	Lighting.ExposureCompensation = 0.25
-	Lighting.ClockTime = 14.2
+	-- Art direction: deep blue shadows, warm limestone and restrained neon.
+	-- The previous exposure washed the architecture out and clipped crystals.
+	Lighting.Brightness = 2.1
+	Lighting.ExposureCompensation = 0.03
+	Lighting.ClockTime = 15.2
 	Lighting.GeographicLatitude = 20
-	Lighting.Ambient = Color3.fromRGB(75, 78, 92)
-	Lighting.OutdoorAmbient = Color3.fromRGB(125, 128, 145)
-	Lighting.EnvironmentDiffuseScale = 0.6
-	Lighting.EnvironmentSpecularScale = 0.3
+	Lighting.Ambient = Color3.fromRGB(70, 75, 95)
+	Lighting.OutdoorAmbient = Color3.fromRGB(110, 115, 135)
+	Lighting.ColorShift_Top = Color3.fromRGB(255, 239, 216)
+	Lighting.ColorShift_Bottom = Color3.fromRGB(48, 61, 89)
+	Lighting.EnvironmentDiffuseScale = 0.42
+	Lighting.EnvironmentSpecularScale = 0.8
 
-	atmosphere.Density = 0.28
-	atmosphere.Offset = 0.22
-	atmosphere.Color = Color3.fromRGB(200, 225, 255)
-	atmosphere.Decay = Color3.fromRGB(120, 145, 190)
-	atmosphere.Glare = 0.15
-	atmosphere.Haze = 1.8
+	atmosphere.Density = 0.2
+	atmosphere.Offset = 0.05
+	atmosphere.Color = Color3.fromRGB(184, 215, 255)
+	atmosphere.Decay = Color3.fromRGB(86, 108, 158)
+	atmosphere.Glare = 0.08
+	atmosphere.Haze = 1.15
 	atmosphere:SetAttribute("PrismoraEffect", true)
 	atmosphere.Parent = Lighting
 
 	local bloom = Instance.new("BloomEffect")
 	bloom.Name = "PrismoraBloom"
-	bloom.Intensity = 0.25
-	bloom.Size = 22
-	bloom.Threshold = 1.2
+	bloom.Intensity = 0.18
+	bloom.Size = 26
+	bloom.Threshold = 1.65
 	bloom:SetAttribute("PrismoraEffect", true)
 	bloom.Parent = Lighting
 
 	local color = Instance.new("ColorCorrectionEffect")
 	color.Name = "PrismoraColor"
-	color.Brightness = 0.01
-	color.Contrast = 0.06
-	color.Saturation = 0.07
-	color.TintColor = Color3.fromRGB(255, 252, 246)
+	color.Brightness = 0
+	color.Contrast = 0.1
+	color.Saturation = 0.14
+	color.TintColor = Color3.fromRGB(255, 247, 238)
 	color:SetAttribute("PrismoraEffect", true)
 	color.Parent = Lighting
 
